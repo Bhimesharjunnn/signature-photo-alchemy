@@ -1,19 +1,13 @@
-
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react";
 import { toast } from "sonner";
 import { drawImagesToCanvas } from "./render/drawImagesToCanvas";
-
-export type Pattern = "grid" | "hexagon" | "circular";
+import type { Pattern, CollageCanvasRef } from "./types";
 
 interface CollageCanvasProps {
   images: { id: string; url: string; name: string }[];
   mainPhotoId: string | null;
   pattern: Pattern;
   locked: boolean;
-}
-
-export interface CollageCanvasRef {
-  downloadCanvas: (format: "png" | "pdf", dpi?: number) => Promise<void>;
 }
 
 // A4 dimensions (in mm)

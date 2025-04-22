@@ -1,7 +1,8 @@
+
 import { toast } from "sonner";
 import { calculateGridLayout } from "../layout/calculateGridLayout";
 import { drawImgSmartCrop, drawImgFit } from "./drawImageHelpers";
-import type { Pattern } from "../../CollageCanvas";
+import type { Pattern } from "../types";
 
 /**
  * Master drawing function to paint images by pattern.
