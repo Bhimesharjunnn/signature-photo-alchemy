@@ -48,10 +48,9 @@ function drawImagesToCanvas(
   const sideImgs = images.filter((img) => img.id !== mainPhotoId);
   const totalSide = sideImgs.length;
 
-  // ------- NEW TIGHT-FRAME GRID PATTERN -------
+  // ------- FULL-FRAME GRID PATTERN OPTIMIZED -------
   if (pattern === "grid") {
-
-    // Warning when too many images
+    // Show a warning for extreme photo counts
     if (images.length > 50) {
       toast.warning("Large number of photos may affect visual clarity", {
         id: "too-many-photos-warning",
@@ -59,202 +58,161 @@ function drawImagesToCanvas(
       });
     }
 
-    // The challenge is: 1 main photo in the center, side photos in a tight, symmetric frame (top, right, bottom, left), with all side photos perfectly equal size (squares), pad=5 everywhere, max-fill.
-    // Algorithm:
-    // 1. Decide how many photos on each side (top, bottom, left, right), making all arrangements as tight as possible.
-    // 2. Compute optimal side-photo square size (must fit all, allow 5px padding between and around, plus fit the main photo with 4 sides all padded).
-    // 3. Center the composite frame neatly within the canvas.
+    // The main photo is a centered square using 50% of canvas width
+    const MAIN_FRAC = 0.5;
+    const pad = PADDING;
 
-    // --- Step 1: Grid balancing ---
-    // To create a proportional photo frame:
-    // - Aim for equal N_top, N_bottom (spread remainder to top/bottom FIRST), then N_left, N_right.
-    // - Work with the smallest number allowed by aspect ratio of canvas & target side counts
+    const mainSize = Math.round(CANVAS_WIDTH * MAIN_FRAC);
 
-    // Let's optimize using best-fit row/col search:
+    // Available space left for side photos on each direction
+    // Make an outer frame around main image, spanning the A4 as closely as possible
 
-    let best = null;
-    let pad = PADDING;
-    let minMargin = 0.01; // Tolerance
+    // We want to maximize side photo size given (nTop, nBottom, nLeft, nRight):
+    // To distribute evenly, let's find a configuration where top/bottom/left/right are as balanced as possible, with any "extras" going to the top/bottom first for symmetry
+    // (The math below ensures the main photo stays 50%, never shrinks;
+    //  side photo count and size computed accordingly.)
 
-    // Try all possible top/bottom/left/right splits that use all photos
-    // We'll try k rows top, k rows bottom, k cols left/right, for k from 1 up to reasonable max
-    // Max possible for top/bottom/left/right is sideImgs.length (if all go to one edge), but typically they are split
+    // Heuristic: For N side imgs, compute minimal "gap" surrounding main, maximize k
+    // First, estimate # of imgs along each side (nHoriz, nVert)
 
-    // We only need to search up to the square root of totalSide for best symmetry
-    const maxRows = Math.ceil(Math.sqrt(totalSide));
-    for (let nTop = 1; nTop <= Math.ceil(totalSide / 2); nTop++) {
-      for (let nBottom = 1; nBottom <= Math.ceil(totalSide / 2); nBottom++) {
-        // Remaining for sides
-        let remaining = totalSide - nTop - nBottom;
+    // We need to solve for: (nLeft + nRight) vertical slots and (nTop + nBottom) horizontal slots, such that:
+    //   (nLeft + nRight) + (nTop + nBottom) = totalSide
+    // But the corners will overlap in grid, so for a tightly-packed frame, subtract 4 for the corners (each is counted in both row and col):
+    //   totalSide = (nTop + nBottom) + (nLeft + nRight)
+    //     (corner overlap handled automatically since we'll assign left/right = remaining after top/bottom)
+
+    // To maximize symmetry, try all reasonable splits of totalSide between horizontal(top+bottom) and vertical(left+right)
+    let bestConfig = null;
+    let bestScore = -Infinity;
+
+    for (
+      let nTop = Math.floor(totalSide / 4);
+      nTop <= Math.ceil((totalSide + 3) / 4) + 1;
+      nTop++
+    ) {
+      for (
+        let nBottom = Math.floor(totalSide / 4);
+        nBottom <= Math.ceil((totalSide + 3) / 4) + 1;
+        nBottom++
+      ) {
+        let remaining = totalSide - (nTop + nBottom);
         if (remaining < 0) continue;
 
-        // Divide remaining equally (favor left if odd)
+        // Distribute remaining to left/right as evenly as possible
         let nLeft = Math.ceil(remaining / 2);
         let nRight = remaining - nLeft;
 
-        // Now, compute how much space does this require
-        // We'll use s = side photo width/height (square)
+        // Don't allow negative
+        if (nLeft < 0 || nRight < 0) continue;
 
-        // Main photo dimension: try fractions from 50% to 60% of width
-        for (let mainFrac = 0.5; mainFrac <= 0.6; mainFrac += 0.01) {
-          // Try to maximize s (side image size)
-          // Setup: arrange top/bottom nTop/nBottom, left/right nLeft/nRight
+        // # of side images per row/col (corners will "double up")
+        const sideImgsOnWidth = Math.max(nLeft, nRight);
+        const sideImgsOnHeight = Math.max(nTop, nBottom);
 
-          // The main photo is surrounded on all sides by padding + side photo stripes
-          // Main photo size = (W - total horiz padding - side photo stripes) in width,
-          // and = (H - total vert padding - side photo stripes) in height
+        // Given the above, compute the max possible side square size that fits all sides around main photo
+        // Frame total spans:
+        // width: leftPad + nLeft * s + pad + mainSize + pad + nRight * s + rightPad
+        // height: topPad + nTop * s + pad + mainSize + pad + nBottom * s + bottomPad
 
-          // Let s = side photo size, m = main photo size
-          // Compute all based on s:
+        // To "hug" the main photo, minimize pads and edge gaps.
+        // We'll keep the outermost padding at 'pad' on each edge for symmetry.
+        // Total collage width:
+        const totalW =
+          pad + nLeft * (pad) + nLeft * 1 +  // left pads
+          mainSize +
+          pad + nRight * (pad) + nRight * 1 +  // right pads
+          pad;
+        const totalH =
+          pad + nTop * (pad) + nTop * 1 +
+          mainSize +
+          pad + nBottom * (pad) + nBottom * 1 +
+          pad;
 
-          // Along width:
-          //   totalW = pad + nLeft * s + pad + mW + pad + nRight * s + pad
-          // Along height:
-          //   totalH = pad + nTop * s + pad + mH + pad + nBottom * s + pad
+        // But these are just for pad counting. Let's actually solve for s:
+        // Left/right: W = pad + nLeft*(s+pad) + mainSize + nRight*(s+pad) + pad
+        //             => W = mainSize + (nLeft + nRight)*s + (nLeft + nRight + 2)*pad
+        // So side cell size:
+        let availW = CANVAS_WIDTH - mainSize - (nLeft + nRight + 2) * pad;
+        let availH = CANVAS_HEIGHT - mainSize - (nTop + nBottom + 2) * pad;
+        let sW = nLeft + nRight > 0 ? Math.floor(availW / (nLeft + nRight)) : 0;
+        let sH = nTop + nBottom > 0 ? Math.floor(availH / (nTop + nBottom)) : 0;
 
-          // For now, try mW=mH (main photo nearly square)
-          // We'll solve for s that fills the canvas as tight as possible, but not overflowing.
+        // Pick minimal of the two so every side cell is a square
+        let s = Math.max(1, Math.min(sW, sH));
 
-          // Express mW and mH as variables:
-          // Main width:
-          let nSidesW = nLeft + nRight;
-          let nSidesH = nTop + nBottom;
+        // Compute real used W/H
+        let width_used = mainSize + (nLeft + nRight) * s + (nLeft + nRight + 2) * pad;
+        let height_used = mainSize + (nTop + nBottom) * s + (nTop + nBottom + 2) * pad;
 
-          // The available space for side photos + main in width
-          // total number of paddings: left pad, left-between pad, right-between pad, right pad, main left-pad, main right-pad => pad * (nLeft + nRight + 3)
-          // But: each photo = pad.photo.pad
-          // So: pad + nLeft * s + pad + m + pad + nRight * s + pad = W
-          // Simplifies to: (nLeft+nRight)*s + m + 4*pad = W
+        // Score: prefer configurations that use most of canvas (least white)
+        let areaFill = (width_used / CANVAS_WIDTH) * (height_used / CANVAS_HEIGHT);
+        // Penalize unbalanced side splits
+        let symmetry =
+          -Math.abs(nTop - nBottom) - Math.abs(nLeft - nRight);
 
-          // Let m = mainFrac * CANVAS_WIDTH, s = (CANVAS_WIDTH - m - 4*pad)/(nLeft + nRight)
-          let m = mainFrac * CANVAS_WIDTH;
-          let maxS_W = nSidesW > 0 ? Math.floor((CANVAS_WIDTH - m - 4 * pad) / nSidesW) : (CANVAS_WIDTH - 2 * pad);
+        // Only consider splits with all sides used and all images placed
+        if ((nTop + nBottom + nLeft + nRight) !== totalSide) continue;
 
-          let maxS_H = nSidesH > 0 ? Math.floor((CANVAS_HEIGHT - m - 4 * pad) / nSidesH) : (CANVAS_HEIGHT - 2 * pad);
-
-          // The side photo size must fit both horizontally and vertically
-          let s = Math.min(maxS_W, maxS_H);
-
-          if (s < 40) continue; // Avoid too-tiny side photos
-
-          // Now recompute the actual m for this s
-          let mW = CANVAS_WIDTH - (nSidesW * s) - 4 * pad;
-          let mH = CANVAS_HEIGHT - (nSidesH * s) - 4 * pad;
-          let mSide = Math.min(mW, mH); // Always keep main as square as possible
-
-          // Determine margins (how well do we fill the canvas)
-          let usedW = (nSidesW * s) + mSide + 4 * pad;
-          let usedH = (nSidesH * s) + mSide + 4 * pad;
-          let marW = CANVAS_WIDTH - usedW;
-          let marH = CANVAS_HEIGHT - usedH;
-
-          // Pick arrangement that minimizes (marW^2 + marH^2) and keeps all fill
-          let empty = Math.abs(marW) + Math.abs(marH);
-          if (
-            !best ||
-            (empty < best.empty - minMargin) ||
-            (
-              Math.abs(empty - best.empty) < minMargin &&
-              s > best.s
-            )
-          ) {
-            best = {
-              nTop, nBottom, nLeft, nRight,
-              s, mSide,
-              marW, marH,
-              mainFrac,
-              empty,
-              mW: mSide, mH: mSide
-            };
-          }
+        let score = areaFill * 100 + symmetry;
+        if (score > bestScore && s > 25) {
+          bestScore = score;
+          bestConfig = {
+            nTop, nBottom, nLeft, nRight, s, width_used, height_used
+          };
         }
       }
     }
 
-    if (!best) {
+    if (!bestConfig) {
       // Fallback: just draw centered main photo
       drawImgSmartCrop(
         ctx,
         mainImg,
-        (CANVAS_WIDTH - CANVAS_WIDTH * 0.5) / 2,
-        (CANVAS_HEIGHT - CANVAS_WIDTH * 0.5) / 2,
-        CANVAS_WIDTH * 0.5,
-        CANVAS_WIDTH * 0.5
+        (CANVAS_WIDTH - mainSize) / 2,
+        (CANVAS_HEIGHT - mainSize) / 2,
+        mainSize,
+        mainSize
       );
       return;
     }
 
-    // Now, lay out images using the best layout
-    const { nTop, nBottom, nLeft, nRight, s, mSide, marW, marH } = best;
-    let sideIndex = 0;
-    const topImgs = sideImgs.slice(sideIndex, sideIndex + nTop); sideIndex += nTop;
-    const bottomImgs = sideImgs.slice(sideIndex, sideIndex + nBottom); sideIndex += nBottom;
-    const leftImgs = sideImgs.slice(sideIndex, sideIndex + nLeft); sideIndex += nLeft;
-    const rightImgs = sideImgs.slice(sideIndex, sideIndex + nRight);
+    // Maximize collage placement so it nearly touches edges
+    const { nTop, nBottom, nLeft, nRight, s, width_used, height_used } = bestConfig;
 
-    // Main frame: horizontal start
-    // We'll center main + side strips using marW and marH as "outer" margins
-    // Main photo position:
-    let mainX = Math.round((CANVAS_WIDTH - mSide) / 2);
-    let mainY = Math.round((CANVAS_HEIGHT - mSide) / 2);
+    const offsetX = Math.round((CANVAS_WIDTH - width_used) / 2);
+    const offsetY = Math.round((CANVAS_HEIGHT - height_used) / 2);
 
-    // Draw TOP row
-    if (topImgs.length > 0) {
-      // Each photo is s x s, aligned horizontally
-      const totalW = s * topImgs.length + pad * (topImgs.length - 1);
-      const startX = mainX; // frame aligns with main image left edge
-      const xPad = mainX - (s * leftImgs.length + pad * Math.max(leftImgs.length - 1, 0)) - 2 * pad;
-      const y = mainY - s - pad;
-      let x = mainX;
-      for (let k = 0; k < topImgs.length; ++k) {
-        drawImgSmartCrop(ctx, topImgs[k], x, y, s, s);
-        x += s + pad;
-      }
+    let idx = 0;
+    // Top row (left to right)
+    for (let i = 0; i < nTop; ++i, ++idx) {
+      const x = offsetX + pad + (i * (s + pad)) + nLeft * (s + pad);
+      const y = offsetY + pad;
+      if (sideImgs[idx]) drawImgSmartCrop(ctx, sideImgs[idx], x, y, s, s);
+    }
+    // Bottom row (left to right)
+    for (let i = 0; i < nBottom; ++i, ++idx) {
+      const x = offsetX + pad + (i * (s + pad)) + nLeft * (s + pad);
+      const y = offsetY + pad + nTop * (s + pad) + mainSize + pad;
+      if (sideImgs[idx]) drawImgSmartCrop(ctx, sideImgs[idx], x, y, s, s);
+    }
+    // Left col (top to bottom)
+    for (let i = 0; i < nLeft; ++i, ++idx) {
+      const x = offsetX + pad;
+      const y = offsetY + pad + (i * (s + pad)) + nTop * (s + pad);
+      if (sideImgs[idx]) drawImgSmartCrop(ctx, sideImgs[idx], x, y, s, s);
+    }
+    // Right col (top to bottom)
+    for (let i = 0; i < nRight; ++i, ++idx) {
+      const x = offsetX + pad + nLeft * (s + pad) + mainSize + pad;
+      const y = offsetY + pad + (i * (s + pad)) + nTop * (s + pad);
+      if (sideImgs[idx]) drawImgSmartCrop(ctx, sideImgs[idx], x, y, s, s);
     }
 
-    // Draw BOTTOM row
-    if (bottomImgs.length > 0) {
-      const totalW = s * bottomImgs.length + pad * (bottomImgs.length - 1);
-      const startX = mainX;
-      const y = mainY + mSide + pad;
-      let x = mainX;
-      for (let k = 0; k < bottomImgs.length; ++k) {
-        drawImgSmartCrop(ctx, bottomImgs[k], x, y, s, s);
-        x += s + pad;
-      }
-    }
+    // Draw main photo centered in the calculated rectangle
+    const mainX = offsetX + pad + nLeft * (s + pad);
+    const mainY = offsetY + pad + nTop * (s + pad);
 
-    // Draw LEFT column
-    if (leftImgs.length > 0) {
-      const totalH = s * leftImgs.length + pad * (leftImgs.length - 1);
-      const x = mainX - s - pad;
-      let y = mainY;
-      for (let k = 0; k < leftImgs.length; ++k) {
-        drawImgSmartCrop(ctx, leftImgs[k], x, y, s, s);
-        y += s + pad;
-      }
-    }
-
-    // Draw RIGHT column
-    if (rightImgs.length > 0) {
-      const totalH = s * rightImgs.length + pad * (rightImgs.length - 1);
-      const x = mainX + mSide + pad;
-      let y = mainY;
-      for (let k = 0; k < rightImgs.length; ++k) {
-        drawImgSmartCrop(ctx, rightImgs[k], x, y, s, s);
-        y += s + pad;
-      }
-    }
-
-    // Draw main image (centered)
-    drawImgSmartCrop(
-      ctx,
-      mainImg,
-      mainX,
-      mainY,
-      mSide,
-      mSide
-    );
+    drawImgSmartCrop(ctx, mainImg, mainX, mainY, mainSize, mainSize);
   }
 
   // ============ HEXAGON & CIRCULAR - unchanged ============
