@@ -1,9 +1,9 @@
 /**
  * CalculatePositions: Computes size and placement for main + side images in a tight border grid.
  * Ensures:
- *  - Main photo centered and ~50% canvas width
- *  - Side photos are equal sized, form a 'frame' around main photo
- *  - Minimal white space
+ *  - Main photo centered and ~50% canvas width, proportional height inside A4
+ *  - Side photos are equal sized squares, forming a "frame" around main photo (top, bottom, left, right)
+ *  - Minimal white space (5px padding everywhere)
  */
 
 export interface GridLayoutResult {
@@ -24,93 +24,115 @@ export function calculateGridLayout({
   imagesCount: number;
   mainPhotoIndex: number;
 }): GridLayoutResult {
-  // At least 2 images (1 main + at least one side)
-  const numSide = imagesCount - 1;
-  if (imagesCount < 1) return { main: { x: 0, y: 0, w: 0, h: 0 }, side: [] };
+  // At least 1 image required
+  if (imagesCount < 1) 
+    return { main: { x: 0, y: 0, w: 0, h: 0 }, side: [] };
 
-  // Main width is fixed at 50% of canvas width (user requirement)
-  const mainW = Math.round(0.5 * canvasWidth);
-  // Main height should keep within canvas
-  // Let's fit main photo as a square, but fully center it inside canvas
-  const mainH = mainW; // Square
+  // Main photo: 50% canvas width, proportional height (keep square, but don't exceed canvas)
+  const mainW = Math.round(canvasWidth * 0.5);
+  const maxMainH = canvasHeight - 4 * padding; // leave enough headroom
+  const mainH = Math.min(mainW, maxMainH);
 
-  // Center main photo in canvas
+  // Center main photo
   const mainX = Math.round((canvasWidth - mainW) / 2);
   const mainY = Math.round((canvasHeight - mainH) / 2);
 
-  // Layout result only sets main for now
-  // Side arrangement will be handled after next user step
-  const out: GridLayoutResult = {
-    main: {
-      x: mainX,
-      y: mainY,
-      w: mainW,
-      h: mainH,
-    },
-    side: [],
-  };
+  // How many side images?
+  const numSide = imagesCount - 1;
+  if (numSide < 1) {
+    return {
+      main: { x: mainX, y: mainY, w: mainW, h: mainH },
+      side: [],
+    };
+  }
 
-  // Side calculation: for now, keep the legacy calls for compatibility.
-  // We'll refactor side calculation in your next request.
-  const sidePhotoCounts = tryDistributeSidePhotos(numSide);
-  const [nTop, nBtm, nL, nR] = sidePhotoCounts;
-  const nHorz = Math.max(nTop, nBtm), nVert = Math.max(nL, nR);
-  const sW = nL + nR > 0 ? Math.floor((canvasWidth - mainW - (nL + nR + 2) * padding) / (nL + nR)) : 0;
-  const sH = nTop + nBtm > 0 ? Math.floor((canvasHeight - mainH - (nTop + nBtm + 2) * padding) / (nTop + nBtm)) : 0;
-  const s = Math.max(1, Math.min(sW, sH));
+  // --- Side photos layout around main ---
+  // We'll distribute floor(n/4) to each side, extras go: top, bottom, left, right, in that order.
+  const nt = Math.floor(numSide / 4);
+  const nb = Math.floor(numSide / 4);
+  const nl = Math.floor(numSide / 4);
+  const nr = Math.floor(numSide / 4);
+  let remain = numSide - (nt + nb + nl + nr);
+  const nBySide = [nt, nb, nl, nr];
+  for (let i = 0; i < remain; ++i) {
+    nBySide[i % 4]++;
+  }
+  const [nTop, nBtm, nL, nR] = nBySide;
+
+  // Maximize possible tile size while fitting them all with padding
+  // Tiles on top/bottom: laid out left to right, horizontally
+  // Tiles on left/right: laid out vertically
+
+  // Determine max available width/height for rows and columns (outside main + gaps)
+  const availTopBotW = mainW + padding * (nTop > 0 ? (nTop - 1) : 0); // width to place side photos above/below main
+  const availLftRtH = mainH + padding * (nL > 0 ? (nL - 1) : 0); // height to place side photos on left/right of main
+
+  // Calculate the region for tiles:
+  // For top/bottom: Use the space from left edge of main (centered) to the right (mainX to mainX+mainW)
+  // For left/right: Use space from top edge of main (mainY to mainY+mainH)
+
+  // We want side tiles as square as possible and as large as possible for tight fit.
+
+  // 1. Top/bottom side tile width (if 0, default to 0)
+  const sTop = (nTop > 0)
+    ? Math.floor((mainW - (nTop - 1) * padding) / nTop)
+    : 0;
+  const sBtm = (nBtm > 0)
+    ? Math.floor((mainW - (nBtm - 1) * padding) / nBtm)
+    : 0;
+
+  // 2. Left/right side tile height (if 0, default to 0)
+  const sL = (nL > 0)
+    ? Math.floor((mainH - (nL - 1) * padding) / nL)
+    : 0;
+  const sR = (nR > 0)
+    ? Math.floor((mainH - (nR - 1) * padding) / nR)
+    : 0;
+
+  // We want all side tiles to be the same size, take the minimal among all >0
+  // but always at least 1px (for edge cases)
+  let sizes = [sTop, sBtm, sL, sR].filter(v => v > 0);
+  let sideSize = sizes.length ? Math.max(1, Math.min(...sizes)) : 0;
+
+  const side: { x: number; y: number; w: number; h: number }[] = [];
   let idx = 0;
-  // Top row: left to right
-  for (let i = 0; i < nTop; ++i, ++idx) {
-    out.side.push({
-      x: mainX + i * (s + padding),
-      y: mainY - s - padding,
-      w: s,
-      h: s,
-    });
+
+  // --- Top row ---
+  for (let i = 0; i < nTop; i++, idx++) {
+    // Distribute tiles left-to-right, centered above main
+    let startX = mainX; // left edge of main
+    let totalW = sideSize * nTop + padding * (nTop - 1);
+    let x = Math.round(startX + (mainW - totalW) / 2 + i * (sideSize + padding));
+    let y = mainY - sideSize - padding;
+    side.push({ x, y, w: sideSize, h: sideSize });
   }
-  // Bottom row
-  for (let i = 0; i < nBtm; ++i, ++idx) {
-    out.side.push({
-      x: mainX + i * (s + padding),
-      y: mainY + mainH + padding,
-      w: s,
-      h: s,
-    });
+  // --- Bottom row ---
+  for (let i = 0; i < nBtm; i++, idx++) {
+    let startX = mainX;
+    let totalW = sideSize * nBtm + padding * (nBtm - 1);
+    let x = Math.round(startX + (mainW - totalW) / 2 + i * (sideSize + padding));
+    let y = mainY + mainH + padding;
+    side.push({ x, y, w: sideSize, h: sideSize });
   }
-  // Left column
-  for (let i = 0; i < nL; ++i, ++idx) {
-    out.side.push({
-      x: mainX - s - padding,
-      y: mainY + i * (s + padding),
-      w: s,
-      h: s,
-    });
+  // --- Left column ---
+  for (let i = 0; i < nL; i++, idx++) {
+    let startY = mainY;
+    let totalH = sideSize * nL + padding * (nL - 1);
+    let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));
+    let x = mainX - sideSize - padding;
+    side.push({ x, y, w: sideSize, h: sideSize });
   }
-  // Right column
-  for (let i = 0; i < nR; ++i, ++idx) {
-    out.side.push({
-      x: mainX + mainW + padding,
-      y: mainY + i * (s + padding),
-      w: s,
-      h: s,
-    });
+  // --- Right column ---
+  for (let i = 0; i < nR; i++, idx++) {
+    let startY = mainY;
+    let totalH = sideSize * nR + padding * (nR - 1);
+    let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));
+    let x = mainX + mainW + padding;
+    side.push({ x, y, w: sideSize, h: sideSize });
   }
 
-  return out;
-}
-
-/** Distribute the side images to top/bottom/left/right evenly, return [nTop, nBottom, nLeft, nRight] */
-function tryDistributeSidePhotos(n: number): [number, number, number, number] {
-  // Try to be as square/symmetric as possible
-  // Split into 4 sides
-  const base = Math.floor(n / 4);
-  let top = base, btm = base, l = base, r = base;
-  let remain = n - (top + btm + l + r);
-  while (remain > 0) {
-    if (remain > 0) { top++; remain--; }
-    if (remain > 0) { btm++; remain--; }
-    if (remain > 0) { l++; remain--; }
-    if (remain > 0) { r++; remain--; }
-  }
-  return [top, btm, l, r];
+  return {
+    main: { x: mainX, y: mainY, w: mainW, h: mainH },
+    side,
+  };
 }

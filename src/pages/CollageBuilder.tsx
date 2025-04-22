@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useImageUploadQueue } from "@/hooks/useImageUploadQueue";
 import type { Pattern, CollageCanvasRef } from "@/components/collage/types";
+// Removed duplicate 'Pattern' type definition
 
 const PATTERNS: { key: Pattern; label: string; Icon: React.ElementType }[] = [
   { key: "grid", label: "Grid", Icon: Grid2x2 },
