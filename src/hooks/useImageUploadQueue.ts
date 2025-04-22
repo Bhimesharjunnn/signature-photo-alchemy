@@ -1,5 +1,5 @@
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -100,7 +100,7 @@ export function useImageUploadQueue(sessionId: string, uploadedImageNames: strin
   };
 
   // Cleanup URLs on unmount
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       queue.forEach(img => URL.revokeObjectURL(img.url));
     };
