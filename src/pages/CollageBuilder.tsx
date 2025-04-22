@@ -1,3 +1,4 @@
+
 import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -58,10 +59,7 @@ const CollageBuilder = () => {
   // ***** NEW: Step 1 - Ask user how many photos *****
   const [photoLimit, setPhotoLimit] = useState<number | null>(null);
 
-  // Validate images/pre-upload for photoLimit
-  const canUploadCount = photoLimit !== null ? photoLimit - images.length - previewQueue.length : MAX_PHOTO_COUNT;
-
-  // Use local upload queue for instant previews
+  // Use local upload queue for instant previews - IMPORTANT: define this before using it
   const {
     queue: previewQueue,
     addFiles,
@@ -71,6 +69,9 @@ const CollageBuilder = () => {
     uploading,
     canAdd,
   } = useImageUploadQueue(sessionId, images.map(i=>i.name));
+
+  // Validate images/pre-upload for photoLimit - MOVED AFTER previewQueue is defined
+  const canUploadCount = photoLimit !== null ? photoLimit - images.length - previewQueue.length : MAX_PHOTO_COUNT;
 
   const inputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<CollageCanvasRef>(null);
