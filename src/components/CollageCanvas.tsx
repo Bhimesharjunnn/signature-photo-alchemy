@@ -32,34 +32,95 @@ function drawImagesToCanvas(
   const center = CANVAS_SIZE / 2;
 
   if (pattern === "grid") {
-    // Main photo in center, grid of side imgs around (max 3x3)
-    const grid = Math.ceil(Math.sqrt(images.length));
-    const cell = CANVAS_SIZE / grid;
-
-    // Draw all side images first
-    let count = 0;
-    for (let y = 0; y < grid; y++) {
-      for (let x = 0; x < grid; x++) {
-        if (count >= images.length) break;
-        const img = images[count];
-        // Draw main in center after
-        if (img.id === mainPhotoId) {
-          count++;
-          continue;
-        }
-        drawImgFit(ctx, img, x * cell, y * cell, cell, cell);
-        count++;
-      }
+    // New grid pattern: Large center photo (60% of canvas) surrounded by smaller images
+    
+    // Calculate main image dimensions (60% of canvas)
+    const mainSize = CANVAS_SIZE * 0.6;
+    const mainX = center - mainSize / 2;
+    const mainY = center - mainSize / 2;
+    
+    // Draw main image
+    drawImgFit(ctx, mainImg, mainX, mainY, mainSize, mainSize);
+    
+    if (sideImgs.length === 0) return;
+    
+    // Margin between images
+    const margin = 5;
+    
+    // Calculate available spaces for smaller images
+    const smallImgSize = (CANVAS_SIZE - mainSize - margin * 3) / 2;
+    
+    // Organize side images into top, right, bottom, left sections
+    let topImages = [];
+    let rightImages = [];
+    let bottomImages = [];
+    let leftImages = [];
+    
+    // Distribute images evenly among the four sides
+    const totalSlots = Math.floor(sideImgs.length / 4) + (sideImgs.length % 4);
+    const imagesPerSide = Math.max(1, Math.min(3, totalSlots));
+    
+    // Calculate how many images should go on each side
+    let remaining = sideImgs.length;
+    let index = 0;
+    
+    // Fill top row
+    const topCount = Math.min(imagesPerSide, remaining);
+    topImages = sideImgs.slice(index, index + topCount);
+    index += topCount;
+    remaining -= topCount;
+    
+    // Fill right column
+    const rightCount = Math.min(imagesPerSide, remaining);
+    rightImages = sideImgs.slice(index, index + rightCount);
+    index += rightCount;
+    remaining -= rightCount;
+    
+    // Fill bottom row
+    const bottomCount = Math.min(imagesPerSide, remaining);
+    bottomImages = sideImgs.slice(index, index + bottomCount);
+    index += bottomCount;
+    remaining -= bottomCount;
+    
+    // Fill left column
+    const leftCount = Math.min(imagesPerSide, remaining);
+    leftImages = sideImgs.slice(index, index + leftCount);
+    
+    // Draw top row
+    if (topImages.length > 0) {
+      const itemWidth = (mainSize) / topImages.length;
+      topImages.forEach((img, i) => {
+        const x = mainX + i * itemWidth;
+        drawImgFit(ctx, img, x, 0, itemWidth - margin, smallImgSize);
+      });
     }
-    // Draw main image larger and centered over the grid
-    drawImgFit(
-      ctx,
-      mainImg,
-      center - cell * 0.8,
-      center - cell * 0.8,
-      cell * 1.6,
-      cell * 1.6
-    );
+    
+    // Draw right column
+    if (rightImages.length > 0) {
+      const itemHeight = (mainSize) / rightImages.length;
+      rightImages.forEach((img, i) => {
+        const y = mainY + i * itemHeight;
+        drawImgFit(ctx, img, mainX + mainSize + margin, y, smallImgSize, itemHeight - margin);
+      });
+    }
+    
+    // Draw bottom row
+    if (bottomImages.length > 0) {
+      const itemWidth = (mainSize) / bottomImages.length;
+      bottomImages.forEach((img, i) => {
+        const x = mainX + i * itemWidth;
+        drawImgFit(ctx, img, x, mainY + mainSize + margin, itemWidth - margin, smallImgSize);
+      });
+    }
+    
+    // Draw left column
+    if (leftImages.length > 0) {
+      const itemHeight = (mainSize) / leftImages.length;
+      leftImages.forEach((img, i) => {
+        const y = mainY + i * itemHeight;
+        drawImgFit(ctx, img, 0, y, smallImgSize, itemHeight - margin);
+      });
+    }
   } else if (pattern === "hexagon") {
     // Center main, hexagonal ring for others
     // Draw main image at center
