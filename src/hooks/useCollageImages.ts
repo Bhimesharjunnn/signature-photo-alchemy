@@ -1,15 +1,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
-
-// You must connect Supabase integration in Lovable to use the client; assuming supabase client is provided as 'supabase' globally or add import if available.
-import { createClient } from "@supabase/supabase-js";
-
-// These should be set in Supabase integration (public keys are safe to use on client)
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from "@/integrations/supabase/client";
 
 const SESSION_KEY = "signature_collage_session_id";
 
@@ -119,4 +111,3 @@ export function useCollageImages() {
     sessionId,
   };
 }
-
