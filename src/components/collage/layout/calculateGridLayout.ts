@@ -1,9 +1,10 @@
 /**
- * CalculatePositions: Computes size and placement for main + side images in a tight border grid.
- * Ensures:
- *  - Main photo centered and ~50% canvas width, proportional height inside A4
- *  - Side photos are equal sized squares, forming a "frame" around main photo (top, bottom, left, right)
- *  - Minimal white space (5px padding everywhere)
+ * CalculatePositions: Computes size and placement for main + side images filling the A4 canvas tightly,
+ * with consistent 5px padding between every photo and the canvas edge.
+ *
+ * - The main photo is centered, maximized as a square, and dominant (~50% width but grows if room available).
+ * - Side photos are square and form a tight frame (rows above/below, cols left/right) around main photo.
+ * - All side photos are the same size, and all paddings are exactly `padding`.
  */
 
 export interface GridLayoutResult {
@@ -28,111 +29,102 @@ export function calculateGridLayout({
   if (imagesCount < 1) 
     return { main: { x: 0, y: 0, w: 0, h: 0 }, side: [] };
 
-  // Main photo: 50% canvas width, proportional height (keep square, but don't exceed canvas)
-  const mainW = Math.round(canvasWidth * 0.5);
-  const maxMainH = canvasHeight - 4 * padding; // leave enough headroom
-  const mainH = Math.min(mainW, maxMainH);
+  // If only one image, make it fill with margin
+  if (imagesCount === 1) {
+    const w = canvasWidth - 2 * padding;
+    const h = canvasHeight - 2 * padding;
+    // Fit as largest possible square centered
+    const size = Math.min(w, h);
+    const x = Math.round((canvasWidth - size) / 2);
+    const y = Math.round((canvasHeight - size) / 2);
+    return { main: { x, y, w: size, h: size }, side: [] };
+  }
 
-  // Center main photo
-  const mainX = Math.round((canvasWidth - mainW) / 2);
-  const mainY = Math.round((canvasHeight - mainH) / 2);
-
-  // How many side images?
+  // Decide how many side images for each side: top, bottom, left, right
   const numSide = imagesCount - 1;
-  if (numSide < 1) {
-    return {
-      main: { x: mainX, y: mainY, w: mainW, h: mainH },
-      side: [],
-    };
+  let nBySide = [0, 0, 0, 0]; // Top, Bottom, Left, Right
+  for (let i = 0; i < numSide; ++i) nBySide[i % 4]++;
+  const [nTop, nBtm, nLft, nRgt] = nBySide;
+
+  // We want to use as much space as possible, but maintain paddings everywhere.
+  // Let:
+  //   s = side photo size (square, to maximize)
+  //   m = main photo size (square, dominant)
+  //
+  // There are nLft + nRgt photos on the left/right, nTop + nBtm photos on top/bottom
+  // Total grid dimensions:
+  //   gridW = nLft*s + m + nRgt*s + (nLft + nRgt + 2)*padding
+  //   gridH = nTop*s + m + nBtm*s + (nTop + nBtm + 2)*padding
+  //
+  // Solve for max possible s and m that fit canvas
+  // Target: main photo is at least 50% width, but grows to fill space if few side photos
+
+  // To keep main photo dominant, set its min size (50% width)
+  const minMain = Math.min(Math.floor(canvasWidth * 0.5), Math.floor(canvasHeight * 0.5));
+
+  // We'll try all feasible s (from large to small) and pick the one with the largest main photo that fits
+  // For tight layout, we want to maximize both s and m
+  let bestLayout = { main: { x: 0, y: 0, w: 0, h: 0 }, side: [] as any[] };
+  let maxMainArea = 0;
+
+  // Try reducing side size from possible max down to 1
+  const maxSideSizeW = Math.floor((canvasWidth - 2 * padding) / (nLft + nRgt === 0 ? 1 : (nLft + nRgt + 1)));
+  const maxSideSizeH = Math.floor((canvasHeight - 2 * padding) / (nTop + nBtm === 0 ? 1 : (nTop + nBtm + 1)));
+  const maxSideSize = Math.max(1, Math.min(maxSideSizeW, maxSideSizeH, 300));
+
+  for (let s = maxSideSize; s >= 1; --s) {
+    let mW = canvasWidth - (nLft + nRgt) * s - (nLft + nRgt + 2) * padding;
+    let mH = canvasHeight - (nTop + nBtm) * s - (nTop + nBtm + 2) * padding;
+    let m = Math.min(mW, mH);
+
+    // Main should be at least 50% width, but if side images are too many, fallback to as big as possible
+    if (m < minMain && (nLft + nRgt + nTop + nBtm) > 0) continue;
+
+    // Place main photo
+    const gridW = nLft * s + m + nRgt * s + (nLft + nRgt + 2) * padding;
+    const gridH = nTop * s + m + nBtm * s + (nTop + nBtm + 2) * padding;
+    const startX = Math.round((canvasWidth - gridW) / 2);
+    const startY = Math.round((canvasHeight - gridH) / 2);
+
+    const mainX = startX + nLft * s + (nLft + 1) * padding;
+    const mainY = startY + nTop * s + (nTop + 1) * padding;
+
+    // Place side photos: top row
+    const side: { x: number; y: number; w: number; h: number }[] = [];
+    let idx = 0;
+    for (let i = 0; i < nTop; ++i, ++idx) {
+      const x = startX + nLft * s + (nLft + 1) * padding + i * (s + padding) - ((nTop * (s + padding) - padding) - m) / 2;
+      const y = startY + padding;
+      side.push({ x: Math.round(x), y: Math.round(y), w: s, h: s });
+    }
+    // bottom row
+    for (let i = 0; i < nBtm; ++i, ++idx) {
+      const x = startX + nLft * s + (nLft + 1) * padding + i * (s + padding) - ((nBtm * (s + padding) - padding) - m) / 2;
+      const y = startY + nTop * s + m + (nTop + nBtm + 1) * padding;
+      side.push({ x: Math.round(x), y: Math.round(y), w: s, h: s });
+    }
+    // left col
+    for (let i = 0; i < nLft; ++i, ++idx) {
+      const x = startX + padding;
+      const y = startY + nTop * s + (nTop + 1) * padding + i * (s + padding) - ((nLft * (s + padding) - padding) - m) / 2;
+      side.push({ x: Math.round(x), y: Math.round(y), w: s, h: s });
+    }
+    // right col
+    for (let i = 0; i < nRgt; ++i, ++idx) {
+      const x = startX + nLft * s + m + (nLft + 1 + 1) * padding;
+      const y = startY + nTop * s + (nTop + 1) * padding + i * (s + padding) - ((nRgt * (s + padding) - padding) - m) / 2;
+      side.push({ x: Math.round(x), y: Math.round(y), w: s, h: s });
+    }
+    if (m * m > maxMainArea) {
+      bestLayout = {
+        main: { x: Math.round(mainX), y: Math.round(mainY), w: Math.round(m), h: Math.round(m) },
+        side,
+      };
+      maxMainArea = m * m;
+    }
+    // Stop as soon as we find a valid large main and all sides fit
+    if (maxMainArea > 0) break;
   }
 
-  // --- Side photos layout around main ---
-  // We'll distribute floor(n/4) to each side, extras go: top, bottom, left, right, in that order.
-  const nt = Math.floor(numSide / 4);
-  const nb = Math.floor(numSide / 4);
-  const nl = Math.floor(numSide / 4);
-  const nr = Math.floor(numSide / 4);
-  let remain = numSide - (nt + nb + nl + nr);
-  const nBySide = [nt, nb, nl, nr];
-  for (let i = 0; i < remain; ++i) {
-    nBySide[i % 4]++;
-  }
-  const [nTop, nBtm, nL, nR] = nBySide;
-
-  // Maximize possible tile size while fitting them all with padding
-  // Tiles on top/bottom: laid out left to right, horizontally
-  // Tiles on left/right: laid out vertically
-
-  // Determine max available width/height for rows and columns (outside main + gaps)
-  const availTopBotW = mainW + padding * (nTop > 0 ? (nTop - 1) : 0); // width to place side photos above/below main
-  const availLftRtH = mainH + padding * (nL > 0 ? (nL - 1) : 0); // height to place side photos on left/right of main
-
-  // Calculate the region for tiles:
-  // For top/bottom: Use the space from left edge of main (centered) to the right (mainX to mainX+mainW)
-  // For left/right: Use space from top edge of main (mainY to mainY+mainH)
-
-  // We want side tiles as square as possible and as large as possible for tight fit.
-
-  // 1. Top/bottom side tile width (if 0, default to 0)
-  const sTop = (nTop > 0)
-    ? Math.floor((mainW - (nTop - 1) * padding) / nTop)
-    : 0;
-  const sBtm = (nBtm > 0)
-    ? Math.floor((mainW - (nBtm - 1) * padding) / nBtm)
-    : 0;
-
-  // 2. Left/right side tile height (if 0, default to 0)
-  const sL = (nL > 0)
-    ? Math.floor((mainH - (nL - 1) * padding) / nL)
-    : 0;
-  const sR = (nR > 0)
-    ? Math.floor((mainH - (nR - 1) * padding) / nR)
-    : 0;
-
-  // We want all side tiles to be the same size, take the minimal among all >0
-  // but always at least 1px (for edge cases)
-  let sizes = [sTop, sBtm, sL, sR].filter(v => v > 0);
-  let sideSize = sizes.length ? Math.max(1, Math.min(...sizes)) : 0;
-
-  const side: { x: number; y: number; w: number; h: number }[] = [];
-  let idx = 0;
-
-  // --- Top row ---
-  for (let i = 0; i < nTop; i++, idx++) {
-    // Distribute tiles left-to-right, centered above main
-    let startX = mainX; // left edge of main
-    let totalW = sideSize * nTop + padding * (nTop - 1);
-    let x = Math.round(startX + (mainW - totalW) / 2 + i * (sideSize + padding));
-    let y = mainY - sideSize - padding;
-    side.push({ x, y, w: sideSize, h: sideSize });
-  }
-  // --- Bottom row ---
-  for (let i = 0; i < nBtm; i++, idx++) {
-    let startX = mainX;
-    let totalW = sideSize * nBtm + padding * (nBtm - 1);
-    let x = Math.round(startX + (mainW - totalW) / 2 + i * (sideSize + padding));
-    let y = mainY + mainH + padding;
-    side.push({ x, y, w: sideSize, h: sideSize });
-  }
-  // --- Left column ---
-  for (let i = 0; i < nL; i++, idx++) {
-    let startY = mainY;
-    let totalH = sideSize * nL + padding * (nL - 1);
-    let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));
-    let x = mainX - sideSize - padding;
-    side.push({ x, y, w: sideSize, h: sideSize });
-  }
-  // --- Right column ---
-  for (let i = 0; i < nR; i++, idx++) {
-    let startY = mainY;
-    let totalH = sideSize * nR + padding * (nR - 1);
-    let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));
-    let x = mainX + mainW + padding;
-    side.push({ x, y, w: sideSize, h: sideSize });
-  }
-
-  return {
-    main: { x: mainX, y: mainY, w: mainW, h: mainH },
-    side,
-  };
+  return bestLayout;
 }
