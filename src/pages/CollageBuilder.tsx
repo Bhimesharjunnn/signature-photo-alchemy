@@ -1,5 +1,4 @@
-
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useCollageImages } from "@/hooks/useCollageImages";
@@ -18,13 +17,29 @@ import {
 } from "lucide-react";
 import { useImageUploadQueue } from "@/hooks/useImageUploadQueue";
 import type { Pattern, CollageCanvasRef } from "@/components/collage/types";
-// Removed duplicate 'Pattern' type definition
+import { Input } from "@/components/ui/input";
+
+const MIN_PHOTO_COUNT = 10;
+const MAX_PHOTO_COUNT = 50;
 
 const PATTERNS: { key: Pattern; label: string; Icon: React.ElementType }[] = [
   { key: "grid", label: "Grid", Icon: Grid2x2 },
   { key: "hexagon", label: "Hexagon", Icon: Hexagon },
   { key: "circular", label: "Circular", Icon: Circle },
 ];
+
+const getDivisions = (sideCount: number) => {
+  // Returns { top, bottom, left, right } for N side photos, as balanced as possible.
+  // Distribute as evenly as possible, prioritize: top, bottom, left, right
+  const base = Math.floor(sideCount / 4);
+  const rem = sideCount % 4;
+  return {
+    top: base + (rem > 0 ? 1 : 0),
+    bottom: base + (rem > 1 ? 1 : 0),
+    left: base + (rem > 2 ? 1 : 0),
+    right: base,
+  };
+};
 
 const CollageBuilder = () => {
   const {
@@ -39,6 +54,12 @@ const CollageBuilder = () => {
   const [selectedPattern, setSelectedPattern] = useState<Pattern>("grid");
   const [mainPhotoId, setMainPhotoId] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
+
+  // ***** NEW: Step 1 - Ask user how many photos *****
+  const [photoLimit, setPhotoLimit] = useState<number | null>(null);
+
+  // Validate images/pre-upload for photoLimit
+  const canUploadCount = photoLimit !== null ? photoLimit - images.length - previewQueue.length : MAX_PHOTO_COUNT;
 
   // Use local upload queue for instant previews
   const {
@@ -55,17 +76,33 @@ const CollageBuilder = () => {
   const canvasRef = useRef<CollageCanvasRef>(null);
   const [dragActive, setDragActive] = useState(false);
 
-  // Set mainPhotoId initially or after image list changes
-  if (!mainPhotoId && images.length) setMainPhotoId(images[0].id);
   // Remove mainPhotoId if associated image gone
-  if (mainPhotoId && images.every(i => i.id !== mainPhotoId)) setMainPhotoId(null);
+  useEffect(() => {
+    if (!mainPhotoId && images.length) setMainPhotoId(images[0].id);
+    if (mainPhotoId && images.every(i => i.id !== mainPhotoId)) setMainPhotoId(null);
+  }, [mainPhotoId, images]);
 
-  // Handle images drop (for drag and drop)
+  // Only allow selected photos == photoLimit
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files.length) {
+      if (photoLimit !== null) {
+        const newFiles = Array.from(event.target.files).slice(0, canUploadCount);
+        addFiles(newFiles);
+        event.target.value = "";
+      }
+    }
+  };
+
+  // New: Prevent uploading more than allowed via DnD
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragActive(false);
-    addFiles(event.dataTransfer.files);
+    if (photoLimit !== null) {
+      const files = Array.from(event.dataTransfer.files).slice(0, canUploadCount);
+      addFiles(files);
+    }
   };
+
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragActive(true);
@@ -79,13 +116,14 @@ const CollageBuilder = () => {
     inputRef.current?.click();
   };
 
-  // Picker: onChange
-  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files.length) {
-      addFiles(event.target.files);
-      // CLOSE picker!
-      event.target.value = "";
-    }
+  // Step: allow user to change number and restart
+  const handleRestart = () => {
+    setPhotoLimit(null);
+    clearAllImages();
+    setMainPhotoId(null);
+    setLocked(false);
+    // Reset preview queue
+    previewQueue.forEach(img => removeImage(img.id));
   };
 
   // Download handler
@@ -121,9 +159,57 @@ const CollageBuilder = () => {
     picker.click();
   };
 
+  // Pattern-specific layout division, only for "grid" pattern
+  let layoutConfig = null;
+  if (selectedPattern === "grid" && photoLimit) {
+    const total = photoLimit;
+    // 1 main photo, rest sides
+    const sides = total - 1;
+    layoutConfig = getDivisions(sides);
+  }
+
+  // ***** STEP 1: Ask for NUMBER of photos *****
+  if (photoLimit === null) {
+    return (
+      <div className="container mx-auto max-w-md py-12 px-4 flex flex-col items-center">
+        <div className="bg-white border border-brand-light-gray rounded-xl p-8 shadow-sm w-full flex flex-col items-center">
+          <h1 className="text-2xl font-bold mb-4">How many photos will you upload?</h1>
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              const form = e.target as HTMLFormElement;
+              const val = Number((form.elements.namedItem("photoLimit") as HTMLInputElement).value);
+              if (val >= MIN_PHOTO_COUNT && val <= MAX_PHOTO_COUNT) setPhotoLimit(val);
+              else toast.error(`Choose between ${MIN_PHOTO_COUNT} and ${MAX_PHOTO_COUNT}`);
+            }}
+            className="flex flex-col items-center gap-6 w-full"
+          >
+            <Input
+              type="number"
+              name="photoLimit"
+              min={MIN_PHOTO_COUNT}
+              max={MAX_PHOTO_COUNT}
+              step={1}
+              defaultValue={MIN_PHOTO_COUNT}
+              className="w-32 text-center text-lg"
+              required
+            />
+            <Button type="submit" className="bg-brand-purple w-full">
+              Continue
+            </Button>
+          </form>
+          <div className="mt-8 text-brand-cool-gray text-sm">
+            You must upload exactly <b>between {MIN_PHOTO_COUNT} and {MAX_PHOTO_COUNT}</b> photos.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // When preview images exist, show section for them
   const hasPreviewImages = previewQueue.length > 0;
 
+  // ***** STEP 2: Collage workflow as before, but limit uploads *****
   return (
     <div className="container mx-auto max-w-6xl py-12 px-4">
       <div className="text-center mb-12">
@@ -131,7 +217,8 @@ const CollageBuilder = () => {
           Create Your Signature Collage
         </h1>
         <p className="text-brand-cool-gray max-w-2xl mx-auto">
-          Upload photos, arrange them in your preferred pattern, and download your finished collage.
+          Upload <b>{photoLimit}</b> photos to arrange your perfect collage pattern.<br />
+          <Button variant="ghost" size="sm" onClick={handleRestart} className="mt-1">Change number</Button>
         </p>
       </div>
 
@@ -144,18 +231,19 @@ const CollageBuilder = () => {
             ${dragActive ? "border-brand-purple bg-brand-light-purple/30" : "border-brand-light-gray"}
           `}
           tabIndex={0}
-          onClick={() => (!loading && canAdd) ? handleUploadClick() : undefined}
+          onClick={() => (!loading && canAdd && canUploadCount > 0) ? handleUploadClick() : undefined}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
         >
+          {/* Only allow uploads if not at limit */}
           <ImageIcon className="mb-2 text-brand-purple" size={48} />
           <p className="text-brand-cool-gray mb-2 text-center">
             Drag &amp; drop images here<br />or
           </p>
           <Button
             className="my-2 bg-brand-purple hover:bg-brand-purple/90"
-            disabled={loading || !canAdd}
+            disabled={loading || !canAdd || canUploadCount <= 0}
             onClick={handleUploadClick}
             type="button"
           >
@@ -167,12 +255,13 @@ const CollageBuilder = () => {
             multiple
             ref={inputRef}
             className="hidden"
-            max={100 - images.length - previewQueue.length}
+            max={canUploadCount}
             onChange={handleFileInputChange}
-            disabled={loading || !canAdd}
+            disabled={loading || !canAdd || canUploadCount <= 0}
           />
           <span className="mt-2 text-xs text-brand-cool-gray">
-            Max 100 photos per session. JPEG, PNG, GIF supported.
+            {images.length + previewQueue.length} / {photoLimit} uploaded.<br />
+            You must upload <b>exactly {photoLimit}</b> photos to continue.
           </span>
         </div>
 
@@ -251,46 +340,23 @@ const CollageBuilder = () => {
           </div>
         )}
 
-        {/* Pattern selection & collage builder only after at least one image is uploaded */}
-        {images.length > 0 && (
+        {/* Show next step only when ALL images uploaded */}
+        {images.length === photoLimit && (
           <>
+            {/* Pattern section but force pattern to grid */}
             <div className="flex items-center gap-4 mt-8 flex-wrap justify-center">
-              {PATTERNS.map(({ key, label, Icon }) => (
-                <Button
-                  key={key}
-                  variant={selectedPattern === key ? "default" : "secondary"}
-                  className={`flex items-center gap-2 min-w-[120px] ${selectedPattern === key ? "ring-2 ring-brand-purple" : ""}`}
-                  onClick={() => setSelectedPattern(key)}
-                  type="button"
-                >
-                  <Icon className="mr-1" size={20} />
-                  {label}
-                  {selectedPattern === key && (
-                    <SquareCheck className="ml-2 text-brand-purple" size={16} />
-                  )}
-                </Button>
-              ))}
-              <Button
-                variant={locked ? "destructive" : "outline"}
-                className="flex items-center gap-2 ml-4"
-                onClick={() => setLocked((v) => !v)}
-                type="button"
-              >
-                {locked ? (
-                  <Lock className="mr-2" size={18} />
-                ) : (
-                  <LockOpen className="mr-2" size={18} />
-                )}
-                {locked ? "Side Photos Locked" : "Lock Side Photos"}
-              </Button>
+              <span>Grid Pattern for {photoLimit} photos</span>
+              <Button variant="ghost" size="sm" onClick={handleRestart}>Change number</Button>
+              {/* Lock pattern to grid */}
             </div>
             <div className="my-6 flex flex-col items-center">
               <CollageCanvas
                 ref={canvasRef}
                 images={images}
-                mainPhotoId={mainPhotoId}
-                pattern={selectedPattern}
+                mainPhotoId={images[0]?.id ?? null}
+                pattern="grid"
                 locked={locked}
+                layoutConfig={layoutConfig} // Pass grid arrangement to canvas for the pattern
               />
               <div className="mt-4 flex gap-3 justify-center">
                 <Button
@@ -353,17 +419,18 @@ const CollageBuilder = () => {
           </>
         )}
 
+        {/* Clear all (reset) button for emergency */}
         {images.length > 0 && (
           <div className="mt-8 flex justify-center">
             <Button
               variant="destructive"
               className="flex items-center gap-2"
-              onClick={clearAllImages}
+              onClick={handleRestart}
               disabled={loading}
               type="button"
             >
               <Trash2 size={18} className="mr-2" />
-              Clear All
+              Restart
             </Button>
           </div>
         )}

@@ -8,6 +8,7 @@ interface CollageCanvasProps {
   mainPhotoId: string | null;
   pattern: Pattern;
   locked: boolean;
+  layoutConfig?: { top: number; bottom: number; left: number; right: number } | null;
 }
 
 // A4 dimensions (in mm)
@@ -20,7 +21,7 @@ const CANVAS_HEIGHT = Math.round(A4_HEIGHT_MM * MM_TO_PIXELS);
 const PADDING = 5;
 
 const CollageCanvas = forwardRef<CollageCanvasRef, CollageCanvasProps>(
-  ({ images, mainPhotoId, pattern, locked }, ref) => {
+  ({ images, mainPhotoId, pattern, locked, layoutConfig }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [dimensions, setDimensions] = useState({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
 
@@ -30,8 +31,17 @@ const CollageCanvas = forwardRef<CollageCanvasRef, CollageCanvasProps>(
         ctx?.clearRect(0, 0, dimensions.width, dimensions.height);
         return;
       }
-      drawImagesToCanvas(ctx, images, mainPhotoId, pattern, CANVAS_WIDTH, CANVAS_HEIGHT, PADDING);
-    }, [images, mainPhotoId, pattern, locked, dimensions]);
+      drawImagesToCanvas(
+        ctx,
+        images,
+        mainPhotoId,
+        pattern,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        PADDING,
+        layoutConfig
+      );
+    }, [images, mainPhotoId, pattern, locked, dimensions, layoutConfig]);
 
     useImperativeHandle(ref, () => ({
       downloadCanvas: async (format: "png" | "pdf", dpi = 300) => {
@@ -63,7 +73,8 @@ const CollageCanvas = forwardRef<CollageCanvasRef, CollageCanvasProps>(
             pattern,
             CANVAS_WIDTH,
             CANVAS_HEIGHT,
-            PADDING
+            PADDING,
+            layoutConfig
           );
           await new Promise(resolve => setTimeout(resolve, 500));
           if (format === "png") {
