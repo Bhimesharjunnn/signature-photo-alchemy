@@ -1,8 +1,9 @@
+
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useCollageImages } from "@/hooks/useCollageImages";
-import CollageCanvas, { CollageCanvasRef } from "@/components/collage/CollageCanvas";
+import CollageCanvas from "@/components/collage/CollageCanvas";
 import { 
   Image as ImageIcon, 
   Upload, 
@@ -16,9 +17,8 @@ import {
   Download 
 } from "lucide-react";
 import { useImageUploadQueue } from "@/hooks/useImageUploadQueue";
-import type { Pattern } from "@/components/collage/types";
+import type { Pattern, CollageCanvasRef } from "@/components/collage/types";
 
-type Pattern = "grid" | "hexagon" | "circular";
 const PATTERNS: { key: Pattern; label: string; Icon: React.ElementType }[] = [
   { key: "grid", label: "Grid", Icon: Grid2x2 },
   { key: "hexagon", label: "Hexagon", Icon: Hexagon },
