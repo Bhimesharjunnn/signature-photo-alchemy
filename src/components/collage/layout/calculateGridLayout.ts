@@ -1,4 +1,3 @@
-
 /**
  * CalculatePositions: Computes size and placement for main + side images in a tight border grid.
  * Ensures:
@@ -31,60 +30,40 @@ export function calculateGridLayout({
 
   // Main width is fixed at 50% of canvas width (user requirement)
   const mainW = Math.round(0.5 * canvasWidth);
+  // Main height should keep within canvas
+  // Let's fit main photo as a square, but fully center it inside canvas
   const mainH = mainW; // Square
 
-  // Find max nTop, nBtm, nL, nR (row/column count)
-  // Heuristic: Try to create as balanced frame as possible
-  // Calculate perimeter available for side photos:
-  //   Sides: top, right, bottom, left (forming a closed tight frame, corners "double up" if needed, distribute evenly)
-  const sidePhotoCounts = tryDistributeSidePhotos(numSide);
+  // Center main photo in canvas
+  const mainX = Math.round((canvasWidth - mainW) / 2);
+  const mainY = Math.round((canvasHeight - mainH) / 2);
 
-  // Now compute maximal possible side-photo size s such that all fit.
-  // s determined by space along each side, accounting for padding
-
-  // The area available for the full collage (main+side+all padding)
-  // Main sits in the middle, surrounded by top/bottom/left/right
-  // Total frame region (including padding):
-  //    sideW = nL * (s+pad), topW = nT * (s+pad)
-  // regionW = mainW + (sideW_L+sideW_R) + 2*padding (on outer sides)
-  // Try scaling 's' to fit exactly inside canvas
-
-  const [nTop, nBtm, nL, nR] = sidePhotoCounts;
-
-  // Number of side photos:
-  const nHorz = Math.max(nTop, nBtm);
-  const nVert = Math.max(nL, nR);
-
-  // Let side photo size = s; total width used: nL*(s+pad) + mainW + nR*(s+pad) + 2*padding
-  // total height used: nT*(s+pad) + mainH + nBtm*(s+pad) + 2*padding
-  // Our goal: maximize s s.t. everything fits
-  const sW = nL + nR > 0 ? Math.floor((canvasWidth - mainW - (nL + nR + 2) * padding) / (nL + nR)) : 0;
-  const sH = nTop + nBtm > 0 ? Math.floor((canvasHeight - mainH - (nTop + nBtm + 2) * padding) / (nTop + nBtm)) : 0;
-  const s = Math.max(1, Math.min(sW, sH));
-
-  // Compute offsets for centering:
-  const usedW = mainW + (nL + nR) * s + (nL + nR + 2) * padding;
-  const usedH = mainH + (nTop + nBtm) * s + (nTop + nBtm + 2) * padding;
-  const offsetX = Math.round((canvasWidth - usedW) / 2);
-  const offsetY = Math.round((canvasHeight - usedH) / 2);
-
-  // Layout result
+  // Layout result only sets main for now
+  // Side arrangement will be handled after next user step
   const out: GridLayoutResult = {
     main: {
-      x: offsetX + padding + nL * (s + padding),
-      y: offsetY + padding + nTop * (s + padding),
+      x: mainX,
+      y: mainY,
       w: mainW,
       h: mainH,
     },
     side: [],
   };
 
+  // Side calculation: for now, keep the legacy calls for compatibility.
+  // We'll refactor side calculation in your next request.
+  const sidePhotoCounts = tryDistributeSidePhotos(numSide);
+  const [nTop, nBtm, nL, nR] = sidePhotoCounts;
+  const nHorz = Math.max(nTop, nBtm), nVert = Math.max(nL, nR);
+  const sW = nL + nR > 0 ? Math.floor((canvasWidth - mainW - (nL + nR + 2) * padding) / (nL + nR)) : 0;
+  const sH = nTop + nBtm > 0 ? Math.floor((canvasHeight - mainH - (nTop + nBtm + 2) * padding) / (nTop + nBtm)) : 0;
+  const s = Math.max(1, Math.min(sW, sH));
   let idx = 0;
   // Top row: left to right
   for (let i = 0; i < nTop; ++i, ++idx) {
     out.side.push({
-      x: offsetX + padding + nL * (s + padding) + i * (s + padding),
-      y: offsetY + padding,
+      x: mainX + i * (s + padding),
+      y: mainY - s - padding,
       w: s,
       h: s,
     });
@@ -92,8 +71,8 @@ export function calculateGridLayout({
   // Bottom row
   for (let i = 0; i < nBtm; ++i, ++idx) {
     out.side.push({
-      x: offsetX + padding + nL * (s + padding) + i * (s + padding),
-      y: offsetY + padding + nTop * (s + padding) + mainH + padding,
+      x: mainX + i * (s + padding),
+      y: mainY + mainH + padding,
       w: s,
       h: s,
     });
@@ -101,8 +80,8 @@ export function calculateGridLayout({
   // Left column
   for (let i = 0; i < nL; ++i, ++idx) {
     out.side.push({
-      x: offsetX + padding,
-      y: offsetY + padding + nTop * (s + padding) + i * (s + padding),
+      x: mainX - s - padding,
+      y: mainY + i * (s + padding),
       w: s,
       h: s,
     });
@@ -110,8 +89,8 @@ export function calculateGridLayout({
   // Right column
   for (let i = 0; i < nR; ++i, ++idx) {
     out.side.push({
-      x: offsetX + padding + nL * (s + padding) + mainW + padding,
-      y: offsetY + padding + nTop * (s + padding) + i * (s + padding),
+      x: mainX + mainW + padding,
+      y: mainY + i * (s + padding),
       w: s,
       h: s,
     });
@@ -127,7 +106,6 @@ function tryDistributeSidePhotos(n: number): [number, number, number, number] {
   const base = Math.floor(n / 4);
   let top = base, btm = base, l = base, r = base;
   let remain = n - (top + btm + l + r);
-  // Add remainder in order: top, bottom, left, right
   while (remain > 0) {
     if (remain > 0) { top++; remain--; }
     if (remain > 0) { btm++; remain--; }
