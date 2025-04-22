@@ -1,7 +1,25 @@
-
 import { toast } from "sonner";
 import { drawImgSmartCrop, drawImgFit } from "./drawImageHelpers";
 import type { Pattern } from "../types";
+
+/**
+ * Calculates the balanced distribution of side photos for grid layout
+ * @param totalSidePhotos Total number of side photos (total photos - 1 main)
+ * @returns {top, bottom, left, right} counts for even distribution
+ */
+function calculateSidePhotoDistribution(totalSidePhotos: number) {
+  // Base distribution - divide by 4
+  const base = Math.floor(totalSidePhotos / 4);
+  // Remainder to distribute
+  const remainder = totalSidePhotos % 4;
+  
+  return {
+    top: base + (remainder > 0 ? 1 : 0), // First extra goes to top
+    bottom: base + (remainder > 1 ? 1 : 0), // Second extra goes to bottom
+    left: base + (remainder > 2 ? 1 : 0), // Third extra goes to left
+    right: base + (remainder > 3 ? 1 : 0), // Fourth extra (impossible in %4) goes to right
+  };
+}
 
 /**
  * Draws the collage using a CSS Grid-inspired layout.
@@ -30,116 +48,79 @@ export function drawImagesToCanvas(
   const sideImgs = images.filter((img) => img.id !== mainPhotoId);
 
   if (pattern === "grid" && layoutConfig) {
-    const canvasW = CANVAS_WIDTH, canvasH = CANVAS_HEIGHT, GAP = PADDING;
+    const canvasW = CANVAS_WIDTH, canvasH = CANVAS_HEIGHT;
+    const GAP = PADDING; // Fixed 5px padding between photos
 
+    // Get the distribution of photos from layout config
     const { top: nTop, bottom: nBottom, left: nLeft, right: nRight } = layoutConfig;
 
-    // --- Layout optimization logic starts here ---
-    // Find largest possible "main" size and side photo size so all fit, max out occupation
-    // The formula: for given (nTop, nBottom, nLeft, nRight), solve for largest integer mainSize & sideSize.
-    // Let s = side cell size, m = main photo size (square)
+    // Main photo width is fixed at 50% of canvas width as specified
+    const MAIN_PHOTO_WIDTH = Math.round(canvasW * 0.5);
+    
+    // Calculate side photo dimensions for optimal canvas fill (90-95%)
+    // For top and bottom rows: width = (Canvas width - padding) / number of photos
+    // For left and right columns: height = (Canvas height - padding) / number of photos
+    
+    // Side photo dimensions (calculate both width for top/bottom, height for left/right)
+    const topBottomWidth = nTop > 0 ? Math.floor((canvasW - (nTop + 1) * GAP) / nTop) : 0;
+    const leftRightHeight = nLeft > 0 ? Math.floor((canvasH - (nLeft + 1) * GAP) / nLeft) : 0;
+    
+    // For consistency, make all side photos square
+    // Use the smaller dimension to ensure they all fit
+    const sidePhotoSize = Math.min(
+      topBottomWidth, 
+      leftRightHeight
+    );
+    
+    // Main photo centered position
+    const mainPhotoX = (canvasW - MAIN_PHOTO_WIDTH) / 2;
+    const mainPhotoY = (canvasH - MAIN_PHOTO_WIDTH) / 2;
+    
+    // Calculate row/column positions to center everything
+    const topY = Math.max(GAP, mainPhotoY - sidePhotoSize - GAP);
+    const bottomY = Math.min(canvasH - sidePhotoSize - GAP, mainPhotoY + MAIN_PHOTO_WIDTH + GAP);
+    const leftX = Math.max(GAP, mainPhotoX - sidePhotoSize - GAP);
+    const rightX = Math.min(canvasW - sidePhotoSize - GAP, mainPhotoX + MAIN_PHOTO_WIDTH + GAP);
 
-    // The main photo will be at least 30% of the smaller canvas dimension, at most 60%,
-    // but will shrink to allow bigger side images so all fit.
-    let bestConfig = { main: 0, side: 0, offsetX: 0, offsetY: 0, gap: 0 };
-    let maxAreaFill = 0;
-
-    // Try scaling main photo from 60% down to 30% of width, test which config best fills canvas:
-    for (let mainFrac = 0.6; mainFrac >= 0.3; mainFrac -= 0.01) {
-      const mainSize = Math.floor(Math.min(canvasW, canvasH) * mainFrac);
-
-      // Available width/height for side photos
-      const availW = canvasW - mainSize - GAP * 2;
-      const availH = canvasH - mainSize - GAP * 2;
-
-      // How many side images on each row/col (we have these from layoutConfig)
-      // The size of each side photo:
-      const sTop    = nTop    ? Math.floor( (mainSize + availW + GAP * 2 - (nTop-1)*GAP)    / nTop )    : 0;
-      const sBottom = nBottom ? Math.floor( (mainSize + availW + GAP * 2 - (nBottom-1)*GAP) / nBottom ) : 0;
-      const sLeft   = nLeft   ? Math.floor( (mainSize + availH + GAP * 2 - (nLeft-1)*GAP)   / nLeft )   : 0;
-      const sRight  = nRight  ? Math.floor( (mainSize + availH + GAP * 2 - (nRight-1)*GAP)  / nRight )  : 0;
-
-      // Side cell size: minimum across all nonzero that exist.
-      const candidates = [sTop, sBottom, sLeft, sRight].filter(Boolean);
-      if (!candidates.length) continue;
-      const sideCell = Math.min(...candidates);
-
-      // The total width/height occupied by the collage
-      const totalW = GAP + (nLeft ? sideCell * nLeft + GAP * nLeft : 0)
-        + mainSize
-        + (nRight ? GAP * nRight + sideCell * nRight : 0)
-        + GAP;
-      const totalH = GAP + (nTop ? sideCell * nTop + GAP * nTop : 0)
-        + mainSize
-        + (nBottom ? GAP * nBottom + sideCell * nBottom : 0)
-        + GAP;
-      const areaFill = (totalW * totalH) / (canvasW * canvasH);
-
-      // Only accept solutions that don't overflow the canvas, maximize area fill
-      if (
-        totalW <= canvasW + 2 &&
-        totalH <= canvasH + 2 &&
-        areaFill > maxAreaFill &&
-        areaFill >= 0.90 &&      // ensure at least 90% fill
-        sideCell >= 20 &&        // don't make tiny sides
-        mainSize >= 60           // don't make tiny main
-      ) {
-        bestConfig = {
-          main: mainSize,
-          side: sideCell,
-          offsetX: Math.floor((canvasW - totalW) / 2 + GAP),
-          offsetY: Math.floor((canvasH - totalH) / 2 + GAP),
-          gap: GAP
-        };
-        maxAreaFill = areaFill;
-      }
+    // Calculate start positions for top and bottom rows (centered)
+    const topBottomStartX = (canvasW - (nTop * sidePhotoSize + (nTop - 1) * GAP)) / 2;
+    
+    // Calculate start positions for left and right columns (centered)
+    const leftRightStartY = (canvasH - (nLeft * sidePhotoSize + (nLeft - 1) * GAP)) / 2;
+    
+    // Draw the main photo centered
+    drawImgSmartCrop(ctx, mainImg, mainPhotoX, mainPhotoY, MAIN_PHOTO_WIDTH, MAIN_PHOTO_WIDTH);
+    
+    // Counter for side images
+    let sideImageIndex = 0;
+    
+    // Draw top row
+    for (let i = 0; i < nTop && sideImageIndex < sideImgs.length; i++) {
+      const x = topBottomStartX + i * (sidePhotoSize + GAP);
+      drawImgSmartCrop(ctx, sideImgs[sideImageIndex], x, topY, sidePhotoSize, sidePhotoSize);
+      sideImageIndex++;
     }
-
-    // Fallback if nothing adequate found: use just 50% main, conservative side cell
-    if (bestConfig.main === 0) {
-      const fallbackMain = Math.floor(Math.min(canvasW, canvasH) * 0.5);
-      const fallbackSides = Math.max(30, Math.floor((canvasW - fallbackMain - GAP * 4) / (Math.max(nLeft, nRight, nTop, nBottom) || 1)));
-      bestConfig = {
-        main: fallbackMain,
-        side: fallbackSides,
-        offsetX: Math.floor((canvasW - fallbackMain) / 2),
-        offsetY: Math.floor((canvasH - fallbackMain) / 2),
-        gap: GAP
-      };
+    
+    // Draw bottom row
+    for (let i = 0; i < nBottom && sideImageIndex < sideImgs.length; i++) {
+      const x = topBottomStartX + i * (sidePhotoSize + GAP);
+      drawImgSmartCrop(ctx, sideImgs[sideImageIndex], x, bottomY, sidePhotoSize, sidePhotoSize);
+      sideImageIndex++;
     }
-
-    const { main: mainW, side: sideCell, offsetX, offsetY, gap } = bestConfig;
-
-    // --- Drawing routine: draw sides, then main, with precise alignment ---
-    let idx = 0;
-    // Top row (left to right)
-    for (let i = 0; i < nTop; ++i, ++idx) {
-      const x = offsetX + (nLeft ? (sideCell + gap) * nLeft : 0) + i * (sideCell + gap);
-      const y = offsetY;
-      if (sideImgs[idx]) drawImgSmartCrop(ctx, sideImgs[idx], x, y, sideCell, sideCell);
+    
+    // Draw left column
+    for (let i = 0; i < nLeft && sideImageIndex < sideImgs.length; i++) {
+      const y = leftRightStartY + i * (sidePhotoSize + GAP);
+      drawImgSmartCrop(ctx, sideImgs[sideImageIndex], leftX, y, sidePhotoSize, sidePhotoSize);
+      sideImageIndex++;
     }
-    // Bottom row (left to right)
-    for (let i = 0; i < nBottom; ++i, ++idx) {
-      const x = offsetX + (nLeft ? (sideCell + gap) * nLeft : 0) + i * (sideCell + gap);
-      const y = offsetY + (nTop ? (sideCell + gap) * nTop : 0) + mainW + gap;
-      if (sideImgs[idx]) drawImgSmartCrop(ctx, sideImgs[idx], x, y, sideCell, sideCell);
+    
+    // Draw right column
+    for (let i = 0; i < nRight && sideImageIndex < sideImgs.length; i++) {
+      const y = leftRightStartY + i * (sidePhotoSize + GAP);
+      drawImgSmartCrop(ctx, sideImgs[sideImageIndex], rightX, y, sidePhotoSize, sidePhotoSize);
+      sideImageIndex++;
     }
-    // Left col (top to bottom)
-    for (let i = 0; i < nLeft; ++i, ++idx) {
-      const x = offsetX;
-      const y = offsetY + (nTop ? (sideCell + gap) * nTop : 0) + i * (sideCell + gap);
-      if (sideImgs[idx]) drawImgSmartCrop(ctx, sideImgs[idx], x, y, sideCell, sideCell);
-    }
-    // Right col (top to bottom)
-    for (let i = 0; i < nRight; ++i, ++idx) {
-      const x = offsetX + (nLeft ? (sideCell + gap) * nLeft : 0) + mainW + gap;
-      const y = offsetY + (nTop ? (sideCell + gap) * nTop : 0) + i * (sideCell + gap);
-      if (sideImgs[idx]) drawImgSmartCrop(ctx, sideImgs[idx], x, y, sideCell, sideCell);
-    }
-    // Draw Main last, centered
-    const mainX = offsetX + (nLeft ? (sideCell + gap) * nLeft : 0);
-    const mainY = offsetY + (nTop ? (sideCell + gap) * nTop : 0);
-    drawImgSmartCrop(ctx, mainImg, mainX, mainY, mainW, mainW);
 
   } else if (pattern === "hexagon" || pattern === "circular") {
     drawImgFit(
@@ -159,4 +140,3 @@ export function drawImagesToCanvas(
     });
   }
 }
-
