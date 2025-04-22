@@ -1,5 +1,4 @@
-
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 
 export type Pattern = "grid" | "hexagon" | "circular";
 
@@ -8,6 +7,10 @@ interface CollageCanvasProps {
   mainPhotoId: string | null;
   pattern: Pattern;
   locked: boolean;
+}
+
+export interface CollageCanvasRef {
+  downloadCanvas: (format: "png" | "pdf", dpi?: number) => Promise<void>;
 }
 
 const CANVAS_SIZE = 480;
@@ -127,34 +130,99 @@ function drawImgFit(
   };
 }
 
-const CollageCanvas: React.FC<CollageCanvasProps> = ({
-  images,
-  mainPhotoId,
-  pattern,
-  locked,
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+const CollageCanvas = forwardRef<CollageCanvasRef, CollageCanvasProps>(
+  ({ images, mainPhotoId, pattern, locked }, ref) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx || !images.length || !mainPhotoId) {
-      ctx?.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-      return;
-    }
-    drawImagesToCanvas(ctx, images, mainPhotoId, pattern);
-  }, [images, mainPhotoId, pattern, locked]);
+    useEffect(() => {
+      const ctx = canvasRef.current?.getContext("2d");
+      if (!ctx || !images.length || !mainPhotoId) {
+        ctx?.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        return;
+      }
+      drawImagesToCanvas(ctx, images, mainPhotoId, pattern);
+    }, [images, mainPhotoId, pattern, locked]);
 
-  return (
-    <div className="flex flex-col items-center">
-      <canvas
-        ref={canvasRef}
-        width={CANVAS_SIZE}
-        height={CANVAS_SIZE}
-        className="border rounded shadow-lg bg-white"
-        style={{ maxWidth: "100%", height: "auto" }}
-      />
-    </div>
-  );
-};
+    useImperativeHandle(ref, () => ({
+      downloadCanvas: async (format: "png" | "pdf", dpi = 300) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const tempCanvas = document.createElement("canvas");
+        const scale = dpi / 96;
+        tempCanvas.width = CANVAS_SIZE * scale;
+        tempCanvas.height = CANVAS_SIZE * scale;
+        
+        const tempCtx = tempCanvas.getContext("2d");
+        if (!tempCtx) return;
+        
+        tempCtx.scale(scale, scale);
+        
+        tempCtx.fillStyle = "white";
+        tempCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        
+        if (images.length && mainPhotoId) {
+          drawImagesToCanvas(tempCtx, images, mainPhotoId, pattern);
+          
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          if (format === "png") {
+            const pngUrl = tempCanvas.toDataURL("image/png");
+            const link = document.createElement("a");
+            link.download = `collage-${pattern}-${new Date().getTime()}.png`;
+            link.href = pngUrl;
+            link.click();
+          } else if (format === "pdf") {
+            const { jsPDF } = await import("jspdf");
+            const pdf = new jsPDF({
+              orientation: "portrait",
+              unit: "mm",
+              format: "a4"
+            });
+            
+            const imgData = tempCanvas.toDataURL("image/png");
+            
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const aspectRatio = tempCanvas.width / tempCanvas.height;
+            
+            let imgWidth = pdfWidth - 20;
+            let imgHeight = imgWidth / aspectRatio;
+            
+            if (imgHeight > pdfHeight - 20) {
+              imgHeight = pdfHeight - 20;
+              imgWidth = imgHeight * aspectRatio;
+            }
+            
+            pdf.addImage(
+              imgData, 
+              "PNG", 
+              (pdfWidth - imgWidth) / 2, 
+              (pdfHeight - imgHeight) / 2, 
+              imgWidth, 
+              imgHeight
+            );
+            
+            pdf.save(`collage-${pattern}-${new Date().getTime()}.pdf`);
+          }
+        }
+      }
+    }));
+
+    return (
+      <div className="flex flex-col items-center">
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_SIZE}
+          height={CANVAS_SIZE}
+          className="border rounded shadow-lg bg-white"
+          style={{ maxWidth: "100%", height: "auto" }}
+        />
+      </div>
+    );
+  }
+);
+
+CollageCanvas.displayName = "CollageCanvas";
 
 export default CollageCanvas;

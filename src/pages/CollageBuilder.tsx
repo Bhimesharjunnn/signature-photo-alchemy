@@ -1,10 +1,20 @@
-
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useCollageImages } from "@/hooks/useCollageImages";
-import { Image as ImageIcon, Upload, Trash2, Grid2x2, Hexagon, Circle, Lock, LockOpen, SquareCheck } from "lucide-react";
-import CollageCanvas from "@/components/CollageCanvas";
+import { 
+  Image as ImageIcon, 
+  Upload, 
+  Trash2, 
+  Grid2x2, 
+  Hexagon, 
+  Circle, 
+  Lock, 
+  LockOpen, 
+  SquareCheck,
+  Download 
+} from "lucide-react";
+import CollageCanvas, { CollageCanvasRef } from "@/components/CollageCanvas";
 
 type Pattern = "grid" | "hexagon" | "circular";
 
@@ -25,12 +35,10 @@ const CollageBuilder = () => {
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Collage interaction state
   const [selectedPattern, setSelectedPattern] = useState<Pattern>("grid");
   const [mainPhotoId, setMainPhotoId] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
 
-  // Set default main photo when list changes
   if (images.length && !mainPhotoId) {
     setMainPhotoId(images[0].id);
   }
@@ -61,18 +69,38 @@ const CollageBuilder = () => {
     const files = event.target.files;
     if (files && files.length > 0) {
       uploadImages(files);
-      // Reset so user can upload the same file again if needed
       event.target.value = "";
     }
   };
 
-  // Main photo toggle/set
   const handleSetMainPhoto = (id: string) => {
     if (locked && images.length > 1) {
       toast.info("Side photos are locked!");
       return;
     }
     setMainPhotoId(id);
+  };
+
+  const canvasRef = useRef<CollageCanvasRef>(null);
+
+  const handleDownload = async (format: "png" | "pdf") => {
+    if (!images.length) {
+      toast.error("Please upload images first!");
+      return;
+    }
+    if (!mainPhotoId) {
+      toast.error("Please select a main photo!");
+      return;
+    }
+
+    toast.info(`Preparing ${format.toUpperCase()} download...`);
+    try {
+      await canvasRef.current?.downloadCanvas(format);
+      toast.success(`${format.toUpperCase()} downloaded successfully!`);
+    } catch (error) {
+      console.error("Download error:", error);
+      toast.error(`Failed to download ${format.toUpperCase()}`);
+    }
   };
 
   return (
@@ -126,7 +154,7 @@ const CollageBuilder = () => {
             Max 100 photos per session. JPEG, PNG, GIF supported.
           </span>
         </div>
-        {/* Pattern picker and lock after images uploaded */}
+        
         {images.length > 0 && (
           <>
             <div className="flex items-center gap-4 mt-8 flex-wrap justify-center">
@@ -161,11 +189,33 @@ const CollageBuilder = () => {
             </div>
             <div className="my-6 flex flex-col items-center">
               <CollageCanvas
+                ref={canvasRef}
                 images={images}
                 mainPhotoId={mainPhotoId}
                 pattern={selectedPattern}
                 locked={locked}
               />
+              
+              {images.length > 0 && (
+                <div className="mt-4 flex gap-3 justify-center">
+                  <Button
+                    onClick={() => handleDownload("png")}
+                    className="bg-brand-purple hover:bg-brand-purple/90"
+                  >
+                    <Download className="mr-2" size={18} />
+                    Download PNG
+                  </Button>
+                  <Button 
+                    onClick={() => handleDownload("pdf")}
+                    variant="outline"
+                    className="border-brand-purple text-brand-purple hover:bg-brand-purple/10"
+                  >
+                    <Download className="mr-2" size={18} />
+                    Download PDF (A4)
+                  </Button>
+                </div>
+              )}
+              
               <div className="flex flex-wrap gap-4 mt-6 justify-center">
                 {images.map((img) => (
                   <div
