@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 import { drawImgSmartCrop, drawImgFit } from "./drawImageHelpers";
 import type { Pattern } from "../types";
@@ -24,7 +23,8 @@ function calculateSidePhotoDistribution(totalSidePhotos: number) {
 
 /**
  * Draws the collage using a CSS Grid-inspired layout.
- * Creates a perfect grid structure with equal-sized cells and consistent alignment.
+ * Optimized to minimize white space, maximize photo size,
+ * and ensure equal paddings and balanced distribution.
  */
 export function drawImagesToCanvas(
   ctx: CanvasRenderingContext2D,
@@ -48,125 +48,80 @@ export function drawImagesToCanvas(
   const sideImgs = images.filter((img) => img.id !== mainPhotoId);
 
   if (pattern === "grid" && layoutConfig) {
-    const GAP = PADDING; // Fixed 5px grid gap between cells
-    
+    const canvasW = CANVAS_WIDTH, canvasH = CANVAS_HEIGHT;
+    const GAP = PADDING; // Fixed 5px padding between photos
+
     // Get the distribution of photos from layout config
     const { top: nTop, bottom: nBottom, left: nLeft, right: nRight } = layoutConfig;
+
+    // Main photo width is fixed at 50% of canvas width as specified
+    const MAIN_PHOTO_WIDTH = Math.round(canvasW * 0.5);
     
-    // Calculate grid metrics for a perfect grid layout
-    // Using 60% of canvas width for main photo (instead of previous 50%)
-    const MAIN_WIDTH_PERCENTAGE = 0.6; 
-    const MAIN_PHOTO_WIDTH = Math.round(CANVAS_WIDTH * MAIN_WIDTH_PERCENTAGE);
-    const MAIN_PHOTO_HEIGHT = MAIN_PHOTO_WIDTH; // Keep main photo square
+    // Calculate side photo dimensions for optimal canvas fill (90-95%)
+    // For top and bottom rows: width = (Canvas width - padding) / number of photos
+    // For left and right columns: height = (Canvas height - padding) / number of photos
     
-    // Setup grid cells dimensions to ensure equal cell sizes
-    // For a perfect grid, all cells must be the same size
-    const totalColumns = nLeft + 1 + nRight; // left cells + main + right cells
-    const totalRows = nTop + 1 + nBottom; // top cells + main + bottom cells
+    // Side photo dimensions (calculate both width for top/bottom, height for left/right)
+    const topBottomWidth = nTop > 0 ? Math.floor((canvasW - (nTop + 1) * GAP) / nTop) : 0;
+    const leftRightHeight = nLeft > 0 ? Math.floor((canvasH - (nLeft + 1) * GAP) / nLeft) : 0;
     
-    // Calculate cell size to fill 95% of canvas while maintaining grid structure
-    // We want all side photos to be perfect squares of the same size
-    const CANVAS_FILL_RATIO = 0.95; // Fill 95% of canvas
+    // For consistency, make all side photos square
+    // Use the smaller dimension to ensure they all fit
+    const sidePhotoSize = Math.min(
+      topBottomWidth, 
+      leftRightHeight
+    );
     
-    // Calculate available space after accounting for gaps
-    const availableWidth = CANVAS_WIDTH * CANVAS_FILL_RATIO - (GAP * (totalColumns - 1));
-    const availableHeight = CANVAS_HEIGHT * CANVAS_FILL_RATIO - (GAP * (totalRows - 1));
+    // Main photo centered position
+    const mainPhotoX = (canvasW - MAIN_PHOTO_WIDTH) / 2;
+    const mainPhotoY = (canvasH - MAIN_PHOTO_WIDTH) / 2;
     
-    // Calculate grid cell sizes based on number of cells and main photo's relative size
-    // Main photo should take multiple grid cells (equivalent to its size percentage)
-    const mainColSpan = Math.ceil(totalColumns * MAIN_WIDTH_PERCENTAGE);
-    const mainRowSpan = mainColSpan; // Keep main photo spans equal for square
+    // Calculate row/column positions to center everything
+    const topY = Math.max(GAP, mainPhotoY - sidePhotoSize - GAP);
+    const bottomY = Math.min(canvasH - sidePhotoSize - GAP, mainPhotoY + MAIN_PHOTO_WIDTH + GAP);
+    const leftX = Math.max(GAP, mainPhotoX - sidePhotoSize - GAP);
+    const rightX = Math.min(canvasW - sidePhotoSize - GAP, mainPhotoX + MAIN_PHOTO_WIDTH + GAP);
+
+    // Calculate start positions for top and bottom rows (centered)
+    const topBottomStartX = (canvasW - (nTop * sidePhotoSize + (nTop - 1) * GAP)) / 2;
     
-    // Calculate cell size (all cells have the same dimension for perfect grid)
-    const cellWidth = availableWidth / (totalColumns - mainColSpan + mainColSpan);
-    const cellHeight = availableHeight / (totalRows - mainRowSpan + mainRowSpan);
+    // Calculate start positions for left and right columns (centered)
+    const leftRightStartY = (canvasH - (nLeft * sidePhotoSize + (nLeft - 1) * GAP)) / 2;
     
-    // Use the smaller dimension to ensure perfect squares for side photos
-    const cellSize = Math.min(cellWidth, cellHeight);
+    // Draw the main photo centered
+    drawImgSmartCrop(ctx, mainImg, mainPhotoX, mainPhotoY, MAIN_PHOTO_WIDTH, MAIN_PHOTO_WIDTH);
     
-    // Recalculate main photo dimensions based on cell size and its span
-    const mainPhotoWidth = cellSize * mainColSpan + GAP * (mainColSpan - 1);
-    const mainPhotoHeight = cellSize * mainRowSpan + GAP * (mainRowSpan - 1);
-    
-    // Calculate grid start position to center the entire grid on canvas
-    const gridWidth = cellSize * totalColumns + GAP * (totalColumns - 1);
-    const gridHeight = cellSize * totalRows + GAP * (totalRows - 1);
-    const gridStartX = (CANVAS_WIDTH - gridWidth) / 2;
-    const gridStartY = (CANVAS_HEIGHT - gridHeight) / 2;
-    
-    // Calculate position of the main photo (centered in the grid)
-    const mainColStart = nLeft;
-    const mainRowStart = nTop;
-    const mainPhotoX = gridStartX + mainColStart * (cellSize + GAP);
-    const mainPhotoY = gridStartY + mainRowStart * (cellSize + GAP);
-    
-    // Draw the main photo
-    drawImgSmartCrop(ctx, mainImg, mainPhotoX, mainPhotoY, mainPhotoWidth, mainPhotoHeight);
-    
-    // Draw side photos in perfect grid alignment
+    // Counter for side images
     let sideImageIndex = 0;
     
     // Draw top row
     for (let i = 0; i < nTop && sideImageIndex < sideImgs.length; i++) {
-      for (let col = 0; col < totalColumns && sideImageIndex < sideImgs.length; col++) {
-        // Skip cells that are part of the main photo's span
-        if (i >= mainRowStart && i < mainRowStart + mainRowSpan && 
-            col >= mainColStart && col < mainColStart + mainColSpan) {
-          continue;
-        }
-        
-        const x = gridStartX + col * (cellSize + GAP);
-        const y = gridStartY + i * (cellSize + GAP);
-        drawImgSmartCrop(ctx, sideImgs[sideImageIndex], x, y, cellSize, cellSize);
-        sideImageIndex++;
-        
-        // Break if we've drawn enough for top row
-        if (sideImageIndex >= nTop) break;
-      }
+      const x = topBottomStartX + i * (sidePhotoSize + GAP);
+      drawImgSmartCrop(ctx, sideImgs[sideImageIndex], x, topY, sidePhotoSize, sidePhotoSize);
+      sideImageIndex++;
     }
     
     // Draw bottom row
     for (let i = 0; i < nBottom && sideImageIndex < sideImgs.length; i++) {
-      for (let col = 0; col < totalColumns && sideImageIndex < sideImgs.length; col++) {
-        // Skip cells that are part of the main photo's span
-        if (i + mainRowStart + mainRowSpan >= mainRowStart && 
-            i + mainRowStart + mainRowSpan < mainRowStart + mainRowSpan && 
-            col >= mainColStart && col < mainColStart + mainColSpan) {
-          continue;
-        }
-        
-        const x = gridStartX + col * (cellSize + GAP);
-        const y = gridStartY + (mainRowStart + mainRowSpan + i) * (cellSize + GAP);
-        drawImgSmartCrop(ctx, sideImgs[sideImageIndex], x, y, cellSize, cellSize);
-        sideImageIndex++;
-        
-        // Break if we've drawn enough for bottom row
-        if (sideImageIndex >= nTop + nBottom) break;
-      }
+      const x = topBottomStartX + i * (sidePhotoSize + GAP);
+      drawImgSmartCrop(ctx, sideImgs[sideImageIndex], x, bottomY, sidePhotoSize, sidePhotoSize);
+      sideImageIndex++;
     }
     
     // Draw left column
     for (let i = 0; i < nLeft && sideImageIndex < sideImgs.length; i++) {
-      for (let row = mainRowStart; row < mainRowStart + mainRowSpan && sideImageIndex < sideImgs.length; row++) {
-        const x = gridStartX + i * (cellSize + GAP);
-        const y = gridStartY + row * (cellSize + GAP);
-        drawImgSmartCrop(ctx, sideImgs[sideImageIndex], x, y, cellSize, cellSize);
-        sideImageIndex++;
-        
-        // Break if we've drawn enough for left column
-        if (sideImageIndex >= nTop + nBottom + nLeft) break;
-      }
+      const y = leftRightStartY + i * (sidePhotoSize + GAP);
+      drawImgSmartCrop(ctx, sideImgs[sideImageIndex], leftX, y, sidePhotoSize, sidePhotoSize);
+      sideImageIndex++;
     }
     
     // Draw right column
     for (let i = 0; i < nRight && sideImageIndex < sideImgs.length; i++) {
-      for (let row = mainRowStart; row < mainRowStart + mainRowSpan && sideImageIndex < sideImgs.length; row++) {
-        const x = gridStartX + (mainColStart + mainColSpan + i) * (cellSize + GAP);
-        const y = gridStartY + row * (cellSize + GAP);
-        drawImgSmartCrop(ctx, sideImgs[sideImageIndex], x, y, cellSize, cellSize);
-        sideImageIndex++;
-      }
+      const y = leftRightStartY + i * (sidePhotoSize + GAP);
+      drawImgSmartCrop(ctx, sideImgs[sideImageIndex], rightX, y, sidePhotoSize, sidePhotoSize);
+      sideImageIndex++;
     }
+
   } else if (pattern === "hexagon" || pattern === "circular") {
     drawImgFit(
       ctx,
