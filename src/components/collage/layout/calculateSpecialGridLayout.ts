@@ -1,8 +1,8 @@
 
 /**
  * Special Grid Layout Calculator
- * Creates a layout with a larger center photo (equivalent to 15 small photos)
- * and surrounds it with smaller photos in a grid pattern
+ * Creates a layout with a centered 3x5 main photo (15 cells)
+ * surrounded by smaller photos in a 6x8 grid (33 cells for side photos)
  */
 
 export interface SpecialGridLayoutResult {
@@ -19,20 +19,21 @@ export function calculateSpecialGridLayout({
   canvasHeight: number;
   padding: number;
 }): SpecialGridLayoutResult {
-  // We'll create a grid where each small photo is a unit cell
-  // Main photo will be 3x5 = 15 units (as shown in the reference image)
-  const TOTAL_COLS = 8; // Total grid columns
-  const TOTAL_ROWS = 8; // Total grid rows
-  const MAIN_WIDTH = 3; // Main photo width in units
-  const MAIN_HEIGHT = 5; // Main photo height in units
+  // Create a 6x8 grid (48 total cells)
+  const TOTAL_ROWS = 6;
+  const TOTAL_COLS = 8;
   
-  // Calculate cell dimensions
+  // Main photo dimensions (3x5 = 15 cells)
+  const MAIN_WIDTH = 3;
+  const MAIN_HEIGHT = 5;
+  
+  // Calculate cell dimensions with reduced padding
   const cellWidth = (canvasWidth - (TOTAL_COLS + 1) * padding) / TOTAL_COLS;
   const cellHeight = (canvasHeight - (TOTAL_ROWS + 1) * padding) / TOTAL_ROWS;
   
-  // Calculate main photo position (centered)
-  const mainStartCol = Math.floor((TOTAL_COLS - MAIN_WIDTH) / 2);
-  const mainStartRow = Math.floor((TOTAL_ROWS - MAIN_HEIGHT) / 2);
+  // Center the main photo
+  const mainStartCol = Math.floor((TOTAL_COLS - MAIN_WIDTH) / 2);  // Should be position 2
+  const mainStartRow = Math.floor((TOTAL_ROWS - MAIN_HEIGHT) / 2); // Should be position 0
   
   // Calculate main photo dimensions and position
   const mainX = padding + (mainStartCol * (cellWidth + padding));
