@@ -1,10 +1,7 @@
 
 /**
- * CalculatePositions: Computes size and placement for main + side images in a tight border grid.
- * Ensures:
- *  - Main photo centered and ~50% canvas width, proportional height inside A4
- *  - Side photos are equal sized squares, forming a "frame" around main photo
- *  - Minimal white space (5px padding everywhere)
+ * CalculatePositions: Computes size and placement for main + side images in a grid pattern.
+ * Creates a true grid layout with multiple rows and columns surrounding a central main image.
  */
 
 export interface GridLayoutResult {
@@ -29,9 +26,50 @@ export function calculateGridLayout({
   if (imagesCount < 1) 
     return { main: { x: 0, y: 0, w: 0, h: 0 }, side: [] };
 
-  // Determine size of main photo (dynamically adjust based on image count)
-  // With more images, shrink the main image slightly to make room
-  const mainSizeFactor = Math.max(0.3, 0.5 - (imagesCount / 200)); // Scale from 0.5 to 0.3
+  // Determine layout type based on image count
+  // For many images, we'll use a true grid layout with rows and columns
+  const sideCount = imagesCount - 1;
+  
+  // For few images (less than 9), use the center-focused layout
+  if (sideCount < 8) {
+    return calculateCenteredGridLayout({
+      canvasWidth, 
+      canvasHeight, 
+      padding, 
+      imagesCount, 
+      mainPhotoIndex
+    });
+  } 
+  // For more images, use a full grid layout with multiple rows and columns
+  else {
+    return calculateFullGridLayout({
+      canvasWidth,
+      canvasHeight,
+      padding,
+      imagesCount,
+      mainPhotoIndex
+    });
+  }
+}
+
+/**
+ * Calculates a grid layout with main photo in center and sides around it
+ */
+function calculateCenteredGridLayout({
+  canvasWidth,
+  canvasHeight,
+  padding,
+  imagesCount,
+  mainPhotoIndex,
+}: {
+  canvasWidth: number;
+  canvasHeight: number;
+  padding: number;
+  imagesCount: number;
+  mainPhotoIndex: number;
+}): GridLayoutResult {  
+  // Determine size of main photo
+  const mainSizeFactor = Math.max(0.35, 0.5 - (imagesCount / 200));
   const mainW = Math.round(canvasWidth * mainSizeFactor);
   const maxMainH = canvasHeight - 4 * padding;
   const mainH = Math.min(mainW, maxMainH);
@@ -49,143 +87,189 @@ export function calculateGridLayout({
     };
   }
 
-  // Dynamically create a layout based on the number of side photos
+  // Distribute images evenly around main photo
+  const nBySide = [0, 0, 0, 0]; // [top, bottom, left, right]
+  const totalSlots = Math.floor(numSide / 4) * 4;
+  const extras = numSide - totalSlots;
+
+  // Distribute base slots
+  for (let i = 0; i < 4; i++) {
+    nBySide[i] = Math.floor(numSide / 4);
+  }
+
+  // Add extra images prioritizing top and bottom for visual balance
+  for (let i = 0; i < extras; i++) {
+    if (i < 2) {
+      // First two extras go top/bottom
+      nBySide[i % 2]++;
+    } else {
+      // Rest go left/right
+      nBySide[2 + (i % 2)]++;
+    }
+  }
+
+  const [nTop, nBtm, nL, nR] = nBySide;
+
+  // Calculate maximum possible size for side photos that fits all of them
+  const topBtmSpace = mainW;
+  const leftRightSpace = mainH;
+
+  // Calculate sizes based on number of images in each direction
+  const sTop = nTop > 0 ? Math.floor((topBtmSpace - (nTop - 1) * padding) / nTop) : 0;
+  const sBtm = nBtm > 0 ? Math.floor((topBtmSpace - (nBtm - 1) * padding) / nBtm) : 0;
+  const sL = nL > 0 ? Math.floor((leftRightSpace - (nL - 1) * padding) / nL) : 0;
+  const sR = nR > 0 ? Math.floor((leftRightSpace - (nR - 1) * padding) / nR) : 0;
+
+  // Use smallest size for uniform appearance
+  let sizes = [sTop, sBtm, sL, sR].filter(v => v > 0);
+  let sideSize = sizes.length ? Math.min(...sizes) : 0;
+
+  // Ensure minimum 1px size (prevents division by zero)
+  sideSize = Math.max(20, sideSize); // Increased minimum size for visibility
+  
   const side: { x: number; y: number; w: number; h: number }[] = [];
   
-  // Special case for lots of photos - use layout with 3 rows to add more photos on sides
-  if (numSide >= 16) {
-    const gridRows = 5; // Top, mid-top, center, mid-bottom, bottom
-    const gridCols = 5; // Left, mid-left, center, mid-right, right
-    
-    // Size cells based on grid dimensions
-    const colWidth = Math.floor((canvasWidth - (gridCols + 1) * padding) / gridCols);
-    const rowHeight = Math.floor((canvasHeight - (gridRows + 1) * padding) / gridRows);
-    const cellSize = Math.min(colWidth, rowHeight);
-    
-    // Calculate main photo dimensions
-    const newMainW = cellSize * 3 + padding * 2;
-    const newMainH = cellSize * 3 + padding * 2;
-    const newMainX = Math.round((canvasWidth - newMainW) / 2);
-    const newMainY = Math.round((canvasHeight - newMainH) / 2);
-    
-    // Create a grid for all positions
-    const grid = createGrid(gridRows, gridCols, cellSize, padding);
-    
-    // Define center region for main photo
-    const centerStartRow = Math.floor(gridRows / 2) - 1;
-    const centerEndRow = Math.floor(gridRows / 2) + 1;
-    const centerStartCol = Math.floor(gridCols / 2) - 1;
-    const centerEndCol = Math.floor(gridCols / 2) + 1;
-    
-    // Filter out center positions (main photo area)
-    const sidePositions = grid.filter(pos => 
-      !(pos.row >= centerStartRow && pos.row <= centerEndRow && 
-        pos.col >= centerStartCol && pos.col <= centerEndCol)
-    );
-    
-    // Take only as many positions as we have side images
-    const usedPositions = sidePositions.slice(0, numSide);
-    
-    // Map grid positions to canvas coordinates
-    for (const pos of usedPositions) {
-      side.push({
-        x: padding + pos.col * (cellSize + padding),
-        y: padding + pos.row * (cellSize + padding),
-        w: cellSize,
-        h: cellSize
+  // Position all images
+  // Top row
+  for (let i = 0; i < nTop; i++) {
+    let startX = mainX;
+    let totalW = sideSize * nTop + padding * (nTop - 1);
+    let x = Math.round(startX + (mainW - totalW) / 2 + i * (sideSize + padding));
+    let y = mainY - sideSize - padding;
+    side.push({ x, y, w: sideSize, h: sideSize });
+  }
+
+  // Bottom row
+  for (let i = 0; i < nBtm; i++) {
+    let startX = mainX;
+    let totalW = sideSize * nBtm + padding * (nBtm - 1);
+    let x = Math.round(startX + (mainW - totalW) / 2 + i * (sideSize + padding));
+    let y = mainY + mainH + padding;
+    side.push({ x, y, w: sideSize, h: sideSize });
+  }
+
+  // Left column
+  for (let i = 0; i < nL; i++) {
+    let startY = mainY;
+    let totalH = sideSize * nL + padding * (nL - 1);
+    let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));
+    let x = mainX - sideSize - padding;
+    side.push({ x, y, w: sideSize, h: sideSize });
+  }
+
+  // Right column
+  for (let i = 0; i < nR; i++) {
+    let startY = mainY;
+    let totalH = sideSize * nR + padding * (nR - 1);
+    let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));
+    let x = mainX + mainW + padding;
+    side.push({ x, y, w: sideSize, h: sideSize });
+  }
+
+  return {
+    main: { x: mainX, y: mainY, w: mainW, h: mainH },
+    side,
+  };
+}
+
+/**
+ * Calculates a full grid layout with multiple rows and columns
+ * Main photo will be larger but part of the grid
+ */
+function calculateFullGridLayout({
+  canvasWidth,
+  canvasHeight,
+  padding,
+  imagesCount,
+  mainPhotoIndex,
+}: {
+  canvasWidth: number;
+  canvasHeight: number;
+  padding: number;
+  imagesCount: number;
+  mainPhotoIndex: number;
+}): GridLayoutResult {
+  // Calculate optimal grid dimensions
+  const totalImages = imagesCount;
+  
+  // Calculate the best grid dimensions based on total images and canvas aspect ratio
+  const canvasAspect = canvasWidth / canvasHeight;
+  
+  // Determine number of columns based on aspect ratio and image count
+  let columns = Math.ceil(Math.sqrt(totalImages * canvasAspect));
+  let rows = Math.ceil(totalImages / columns);
+  
+  // Adjust if we have too many rows compared to columns
+  if (rows > columns * 1.5) {
+    columns = Math.ceil(Math.sqrt(totalImages));
+    rows = Math.ceil(totalImages / columns);
+  }
+  
+  // Calculate cell size
+  const cellWidth = (canvasWidth - (columns + 1) * padding) / columns;
+  const cellHeight = (canvasHeight - (rows + 1) * padding) / rows;
+  
+  // Create the grid cells
+  const cells: Array<{ x: number; y: number; w: number; h: number }> = [];
+  
+  // Place all images in a grid
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < columns; c++) {
+      const index = r * columns + c;
+      
+      // Skip if we've placed all images
+      if (index >= totalImages) continue;
+      
+      // Calculate position
+      const x = padding + c * (cellWidth + padding);
+      const y = padding + r * (cellHeight + padding);
+      
+      cells.push({
+        x, y, 
+        w: cellWidth, 
+        h: cellHeight
       });
     }
-    
-    // Return updated layout
-    return {
-      main: { x: newMainX, y: newMainY, w: newMainW, h: newMainH },
-      side
-    };
   }
-  // Default layout with 4 sides around the main photo
-  else {
-    // Distribute images evenly around main photo
-    const nBySide = [0, 0, 0, 0]; // [top, bottom, left, right]
-    const totalSlots = Math.floor(numSide / 4) * 4;
-    const extras = numSide - totalSlots;
-
-    // Distribute base slots
-    for (let i = 0; i < 4; i++) {
-      nBySide[i] = Math.floor(numSide / 4);
-    }
-
-    // Add extra images prioritizing top and bottom for visual balance
-    for (let i = 0; i < extras; i++) {
-      if (i < 2) {
-        // First two extras go top/bottom
-        nBySide[i % 2]++;
-      } else {
-        // Rest go left/right
-        nBySide[2 + (i % 2)]++;
-      }
-    }
-
-    const [nTop, nBtm, nL, nR] = nBySide;
-
-    // Calculate maximum possible size for side photos that fits all of them
-    const topBtmSpace = mainW;
-    const leftRightSpace = mainH;
-
-    // Calculate sizes based on number of images in each direction
-    const sTop = nTop > 0 ? Math.floor((topBtmSpace - (nTop - 1) * padding) / nTop) : 0;
-    const sBtm = nBtm > 0 ? Math.floor((topBtmSpace - (nBtm - 1) * padding) / nBtm) : 0;
-    const sL = nL > 0 ? Math.floor((leftRightSpace - (nL - 1) * padding) / nL) : 0;
-    const sR = nR > 0 ? Math.floor((leftRightSpace - (nR - 1) * padding) / nR) : 0;
-
-    // Use smallest size for uniform appearance
-    let sizes = [sTop, sBtm, sL, sR].filter(v => v > 0);
-    let sideSize = sizes.length ? Math.min(...sizes) : 0;
-
-    // Ensure minimum 1px size (prevents division by zero)
-    sideSize = Math.max(10, sideSize); // Increased minimum size for visibility
+  
+  // If we don't have enough cells, add one more row
+  if (cells.length < totalImages) {
+    const lastRowCells = totalImages - cells.length;
+    const lastRowY = padding + rows * (cellHeight + padding);
     
-    // Position all images
-    // Top row
-    for (let i = 0; i < nTop; i++) {
-      let startX = mainX;
-      let totalW = sideSize * nTop + padding * (nTop - 1);
-      let x = Math.round(startX + (mainW - totalW) / 2 + i * (sideSize + padding));
-      let y = mainY - sideSize - padding;
-      side.push({ x, y, w: sideSize, h: sideSize });
+    for (let c = 0; c < lastRowCells; c++) {
+      const x = padding + c * (cellWidth + padding);
+      cells.push({
+        x, y: lastRowY, 
+        w: cellWidth, 
+        h: cellHeight
+      });
     }
-
-    // Bottom row
-    for (let i = 0; i < nBtm; i++) {
-      let startX = mainX;
-      let totalW = sideSize * nBtm + padding * (nBtm - 1);
-      let x = Math.round(startX + (mainW - totalW) / 2 + i * (sideSize + padding));
-      let y = mainY + mainH + padding;
-      side.push({ x, y, w: sideSize, h: sideSize });
-    }
-
-    // Left column
-    for (let i = 0; i < nL; i++) {
-      let startY = mainY;
-      let totalH = sideSize * nL + padding * (nL - 1);
-      let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));
-      let x = mainX - sideSize - padding;
-      side.push({ x, y, w: sideSize, h: sideSize });
-    }
-
-    // Right column
-    for (let i = 0; i < nR; i++) {
-      let startY = mainY;
-      let totalH = sideSize * nR + padding * (nR - 1);
-      let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));
-      let x = mainX + mainW + padding;
-      side.push({ x, y, w: sideSize, h: sideSize });
-    }
-
-    return {
-      main: { x: mainX, y: mainY, w: mainW, h: mainH },
-      side,
-    };
   }
+  
+  // Select main image cell - use center cell of the grid
+  const centerCellIndex = Math.floor(cells.length / 2);
+  const mainCell = cells[centerCellIndex];
+  
+  // Make main cell larger (2x2 if possible)
+  const mainSize = Math.min(cellWidth * 1.5, cellHeight * 1.5);
+  const mainX = mainCell.x + (cellWidth - mainSize) / 2;
+  const mainY = mainCell.y + (cellHeight - mainSize) / 2;
+  
+  // Remove main cell from regular cells and create side cells
+  const sidePositions = cells
+    .filter((_, i) => i !== centerCellIndex)
+    .slice(0, imagesCount - 1); // Only take as many as we need
+  
+  return {
+    main: { 
+      x: mainX, 
+      y: mainY, 
+      w: mainSize, 
+      h: mainSize 
+    },
+    side: sidePositions
+  };
 }
 
 /**

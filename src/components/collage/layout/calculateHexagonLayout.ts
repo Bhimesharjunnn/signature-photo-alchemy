@@ -53,7 +53,8 @@ export function calculateHexagonLayout({
   const ringData = calculateHexagonRings(sideCount);
   
   // Calculate hexagon size based on number of rings
-  const hexSize = maxRadius / (ringData.rings + 0.5) - padding;
+  // Fixed: Adjusted size calculation to avoid overlap
+  const hexSize = maxRadius / (ringData.rings * 1.5 + 0.5) - padding;
   
   // Create hexagon positions using axial coordinates
   const hexPositions = generateHexPositions(ringData.rings, hexSize);
@@ -90,15 +91,16 @@ function calculateHexagonRings(sideCount: number): { rings: number, totalHexes: 
  */
 function generateHexPositions(rings: number, hexSize: number): { x: number, y: number }[] {
   const positions: { x: number, y: number }[] = [];
-  const hexWidth = hexSize * Math.sqrt(3);
-  const hexHeight = hexSize * 2;
-  const vertSpacing = hexHeight * 0.75;
+  // FIX: Adjusted spacing calculation to prevent overlap
+  const hexWidth = hexSize * 2; // Doubled for no overlap
+  const hexHeight = hexSize * 2; 
+  const vertSpacing = hexHeight * 0.85; // Increased from 0.75 to 0.85
   
   // Generate coordinates for each ring
   for (let ring = 1; ring <= rings; ring++) {
     const ringPositions = generateRingPositions(ring);
     for (const pos of ringPositions) {
-      // Convert axial coordinates to pixel positions
+      // Convert axial coordinates to pixel positions with adjusted spacing
       positions.push({
         x: pos.q * hexWidth,
         y: pos.r * vertSpacing + pos.q * vertSpacing / 2
