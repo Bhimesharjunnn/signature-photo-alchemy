@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 import { calculateGridLayout } from "../layout/calculateGridLayout";
 import { calculateHexagonLayout } from "../layout/calculateHexagonLayout";
@@ -67,14 +66,14 @@ export function drawImagesToCanvas(
       });
     }
     
-    // Calculate special grid layout (7x7 with 4x4 main)
+    // Calculate special grid layout with centered main photo
     const layout = calculateSpecialGridLayout({
       canvasWidth: CANVAS_WIDTH,
       canvasHeight: CANVAS_HEIGHT,
       padding: PADDING,
     });
     
-    // Draw side photos first
+    // Draw side photos first (they'll be behind the main photo)
     sideImgs.forEach((img, i) => {
       if (i < layout.side.length) {
         const pos = layout.side[i];

@@ -1,8 +1,8 @@
 
 /**
  * Special Grid Layout Calculator
- * Creates a 7x7 grid with a center 4x4 space for the main photo
- * Designed specifically for layouts with 48 photos (1 main + 47 side)
+ * Creates a layout with a larger center photo (equivalent to 15 small photos)
+ * and surrounds it with smaller photos in a grid pattern
  */
 
 export interface SpecialGridLayoutResult {
@@ -19,40 +19,39 @@ export function calculateSpecialGridLayout({
   canvasHeight: number;
   padding: number;
 }): SpecialGridLayoutResult {
-  // Constants for our 7x7 grid
-  const GRID_SIZE = 7;
-  const MAIN_START_ROW = 1;
-  const MAIN_START_COL = 1;
-  const MAIN_SIZE = 4; // 4x4 cells for main photo
-
-  // Calculate cell dimensions based on canvas size
-  const cellWidth = (canvasWidth - (GRID_SIZE + 1) * padding) / GRID_SIZE;
-  const cellHeight = (canvasHeight - (GRID_SIZE + 1) * padding) / GRID_SIZE;
+  // We'll create a grid where each small photo is a unit cell
+  // Main photo will be 3x5 = 15 units (as shown in the reference image)
+  const TOTAL_COLS = 8; // Total grid columns
+  const TOTAL_ROWS = 8; // Total grid rows
+  const MAIN_WIDTH = 3; // Main photo width in units
+  const MAIN_HEIGHT = 5; // Main photo height in units
   
-  // Calculate position and size for the main photo
-  const mainX = padding + (MAIN_START_COL * (cellWidth + padding));
-  const mainY = padding + (MAIN_START_ROW * (cellHeight + padding));
-  const mainW = (cellWidth * MAIN_SIZE) + (padding * (MAIN_SIZE - 1));
-  const mainH = (cellHeight * MAIN_SIZE) + (padding * (MAIN_SIZE - 1));
+  // Calculate cell dimensions
+  const cellWidth = (canvasWidth - (TOTAL_COLS + 1) * padding) / TOTAL_COLS;
+  const cellHeight = (canvasHeight - (TOTAL_ROWS + 1) * padding) / TOTAL_ROWS;
   
-  // Create the main photo position object
-  const main = {
-    x: mainX,
-    y: mainY,
-    w: mainW,
-    h: mainH
-  };
+  // Calculate main photo position (centered)
+  const mainStartCol = Math.floor((TOTAL_COLS - MAIN_WIDTH) / 2);
+  const mainStartRow = Math.floor((TOTAL_ROWS - MAIN_HEIGHT) / 2);
   
-  // Create positions for all side photos, skipping the cells used by the main photo
+  // Calculate main photo dimensions and position
+  const mainX = padding + (mainStartCol * (cellWidth + padding));
+  const mainY = padding + (mainStartRow * (cellHeight + padding));
+  const mainW = (cellWidth * MAIN_WIDTH) + (padding * (MAIN_WIDTH - 1));
+  const mainH = (cellHeight * MAIN_HEIGHT) + (padding * (MAIN_HEIGHT - 1));
+  
+  const main = { x: mainX, y: mainY, w: mainW, h: mainH };
+  
+  // Create positions for side photos, skipping the cells used by the main photo
   const side: Array<{ x: number; y: number; w: number; h: number }> = [];
   
-  // Iterate through the entire 7x7 grid
-  for (let row = 0; row < GRID_SIZE; row++) {
-    for (let col = 0; col < GRID_SIZE; col++) {
+  // Iterate through the entire grid
+  for (let row = 0; row < TOTAL_ROWS; row++) {
+    for (let col = 0; col < TOTAL_COLS; col++) {
       // Skip cells occupied by the main photo
       if (
-        row >= MAIN_START_ROW && row < MAIN_START_ROW + MAIN_SIZE &&
-        col >= MAIN_START_COL && col < MAIN_START_COL + MAIN_SIZE
+        row >= mainStartRow && row < mainStartRow + MAIN_HEIGHT &&
+        col >= mainStartCol && col < mainStartCol + MAIN_WIDTH
       ) {
         continue;
       }
@@ -61,7 +60,6 @@ export function calculateSpecialGridLayout({
       const x = padding + (col * (cellWidth + padding));
       const y = padding + (row * (cellHeight + padding));
       
-      // Add to side photos array
       side.push({
         x,
         y,
