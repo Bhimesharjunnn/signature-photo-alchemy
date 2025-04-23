@@ -1,6 +1,8 @@
+
 import { toast } from "sonner";
 import { calculateGridLayout } from "../layout/calculateGridLayout";
 import { calculateHexagonLayout } from "../layout/calculateHexagonLayout";
+import { calculateSpecialGridLayout } from "../layout/calculateSpecialGridLayout";
 import { drawImgSmartCrop, drawImgFit } from "./drawImageHelpers";
 import type { Pattern } from "../types";
 
@@ -55,6 +57,33 @@ export function drawImagesToCanvas(
     // Draw main photo last (on top)
     const m = layout.main;
     drawImgSmartCrop(ctx, mainImg, m.x, m.y, m.w, m.h);
+  }
+  else if (pattern === "special-grid") {
+    // Display warning if not close to 48 photos
+    if (images.length < 30 || images.length > 60) {
+      toast.warning("This layout works best with 48 photos", {
+        id: "special-grid-warning",
+        duration: 6000,
+      });
+    }
+    
+    // Calculate special grid layout (7x7 with 4x4 main)
+    const layout = calculateSpecialGridLayout({
+      canvasWidth: CANVAS_WIDTH,
+      canvasHeight: CANVAS_HEIGHT,
+      padding: PADDING,
+    });
+    
+    // Draw side photos first
+    sideImgs.forEach((img, i) => {
+      if (i < layout.side.length) {
+        const pos = layout.side[i];
+        drawImgSmartCrop(ctx, img, pos.x, pos.y, pos.w, pos.h);
+      }
+    });
+    
+    // Draw main photo on top
+    drawImgSmartCrop(ctx, mainImg, layout.main.x, layout.main.y, layout.main.w, layout.main.h);
   }
   else if (pattern === "hexagon") {
     // Use our new hexagon layout algorithm

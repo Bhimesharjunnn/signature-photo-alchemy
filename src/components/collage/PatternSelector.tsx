@@ -1,6 +1,6 @@
 
 import { Button } from "@/components/ui/button";
-import { Grid2x2, Hexagon, Circle, Lock, LockOpen, SquareCheck } from "lucide-react";
+import { Grid2x2, Hexagon, Circle, Layout, Lock, LockOpen, SquareCheck } from "lucide-react";
 import type { Pattern } from "./types";
 
 interface PatternSelectorProps {
@@ -12,6 +12,7 @@ interface PatternSelectorProps {
 
 const PATTERNS: { key: Pattern; label: string; Icon: React.ElementType }[] = [
   { key: "grid", label: "Grid", Icon: Grid2x2 },
+  { key: "special-grid", label: "48 Photo Grid", Icon: Layout },
   { key: "hexagon", label: "Hexagon", Icon: Hexagon },
   { key: "circular", label: "Circular", Icon: Circle },
 ];

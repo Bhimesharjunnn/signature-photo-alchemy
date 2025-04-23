@@ -79,6 +79,15 @@ const CollageBuilder = () => {
     setMainPhotoId(id);
   };
 
+  const handlePatternChange = (pattern: Pattern) => {
+    setSelectedPattern(pattern);
+    
+    // Show a hint for the special grid layout
+    if (pattern === "special-grid" && images.length < 30) {
+      toast.info("The 48 Photo Grid layout works best with 48 photos (1 main + 47 side photos)");
+    }
+  };
+
   return (
     <div className="container mx-auto max-w-6xl py-12 px-4">
       <div className="text-center mb-12">
@@ -113,7 +122,7 @@ const CollageBuilder = () => {
           <>
             <PatternSelector
               selectedPattern={selectedPattern}
-              onPatternSelect={setSelectedPattern}
+              onPatternSelect={handlePatternChange}
               locked={locked}
               onLockToggle={() => setLocked(prev => !prev)}
             />
