@@ -1,3 +1,4 @@
+
 /**
  * CalculatePositions: Computes size and placement for main + side images in a tight border grid.
  * Ensures:
@@ -94,11 +95,17 @@ export function calculateGridLayout({
   let sizes = [sTop, sBtm, sL, sR].filter(v => v > 0);
   let sideSize = sizes.length ? Math.max(1, Math.min(...sizes)) : 0;
 
-  const side: { x: number; y: number; w: number; h: number }[] = [];
-  let idx = 0;
+  // For very large number of images, ensure size is reasonable (minimum 15px)
+  // If there are too many images to fit at this size, we'll need to adjust the layout
+  if (sideSize < 15 && numSide > 20) {
+    // Rather than reducing size below readability, limit photos and make them larger
+    sideSize = 15;
+  }
 
+  const side: { x: number; y: number; w: number; h: number }[] = [];
+  
   // --- Top row ---
-  for (let i = 0; i < nTop; i++, idx++) {
+  for (let i = 0; i < nTop; i++) {
     // Distribute tiles left-to-right, centered above main
     let startX = mainX; // left edge of main
     let totalW = sideSize * nTop + padding * (nTop - 1);
@@ -107,7 +114,7 @@ export function calculateGridLayout({
     side.push({ x, y, w: sideSize, h: sideSize });
   }
   // --- Bottom row ---
-  for (let i = 0; i < nBtm; i++, idx++) {
+  for (let i = 0; i < nBtm; i++) {
     let startX = mainX;
     let totalW = sideSize * nBtm + padding * (nBtm - 1);
     let x = Math.round(startX + (mainW - totalW) / 2 + i * (sideSize + padding));
@@ -115,7 +122,7 @@ export function calculateGridLayout({
     side.push({ x, y, w: sideSize, h: sideSize });
   }
   // --- Left column ---
-  for (let i = 0; i < nL; i++, idx++) {
+  for (let i = 0; i < nL; i++) {
     let startY = mainY;
     let totalH = sideSize * nL + padding * (nL - 1);
     let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));
@@ -123,7 +130,7 @@ export function calculateGridLayout({
     side.push({ x, y, w: sideSize, h: sideSize });
   }
   // --- Right column ---
-  for (let i = 0; i < nR; i++, idx++) {
+  for (let i = 0; i < nR; i++) {
     let startY = mainY;
     let totalH = sideSize * nR + padding * (nR - 1);
     let y = Math.round(startY + (mainH - totalH) / 2 + i * (sideSize + padding));

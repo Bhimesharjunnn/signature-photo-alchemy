@@ -34,6 +34,8 @@ export function drawImagesToCanvas(
         duration: 6000,
       });
     }
+    
+    // Calculate layout for all images
     const layout = calculateGridLayout({
       canvasWidth: CANVAS_WIDTH,
       canvasHeight: CANVAS_HEIGHT,
@@ -42,11 +44,12 @@ export function drawImagesToCanvas(
       mainPhotoIndex: mainIndex,
     });
 
-    // Draw side images
-    for (let i = 0; i < sideImgs.length; ++i) {
+    // Draw all side images (making sure we use every position calculated)
+    for (let i = 0; i < sideImgs.length && i < layout.side.length; ++i) {
       const pos = layout.side[i];
       if (pos) drawImgSmartCrop(ctx, sideImgs[i], pos.x, pos.y, pos.w, pos.h);
     }
+    
     // Draw main photo
     const m = layout.main;
     drawImgSmartCrop(ctx, mainImg, m.x, m.y, m.w, m.h);
