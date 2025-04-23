@@ -19,8 +19,8 @@ import { useImageUploadQueue } from "@/hooks/useImageUploadQueue";
 import type { Pattern, CollageCanvasRef } from "@/components/collage/types";
 import { Input } from "@/components/ui/input";
 
-const MIN_PHOTO_COUNT = 5;
-const MAX_PHOTO_COUNT = 150;
+const MIN_PHOTO_COUNT = 10;
+const MAX_PHOTO_COUNT = 50;
 
 const PATTERNS: { key: Pattern; label: string; Icon: React.ElementType }[] = [
   { key: "grid", label: "Grid", Icon: Grid2x2 },
@@ -28,22 +28,16 @@ const PATTERNS: { key: Pattern; label: string; Icon: React.ElementType }[] = [
   { key: "circular", label: "Circular", Icon: Circle },
 ];
 
-/**
- * Calculates the optimal distribution of side photos on each side
- * @param sideCount Total number of side photos (total - 1 main photo)
- * @returns {top, bottom, left, right} distribution
- */
-const calculatePhotoDistribution = (sideCount: number) => {
-  // Base distribution - divide by 4
+const getDivisions = (sideCount: number) => {
+  // Returns { top, bottom, left, right } for N side photos, as balanced as possible.
+  // Distribute as evenly as possible, prioritize: top, bottom, left, right
   const base = Math.floor(sideCount / 4);
-  // Remainder to distribute
-  const remainder = sideCount % 4;
-  
+  const rem = sideCount % 4;
   return {
-    top: base + (remainder > 0 ? 1 : 0), // First extra goes to top
-    bottom: base + (remainder > 1 ? 1 : 0), // Second extra goes to bottom
-    left: base + (remainder > 2 ? 1 : 0), // Third extra goes to left
-    right: base + (remainder > 3 ? 1 : 0), // Fourth extra (impossible in %4) goes to right
+    top: base + (rem > 0 ? 1 : 0),
+    bottom: base + (rem > 1 ? 1 : 0),
+    left: base + (rem > 2 ? 1 : 0),
+    right: base,
   };
 };
 
@@ -51,13 +45,23 @@ const CollageBuilder = () => {
   const {
     images,
     loading,
-    uploadImages,
+    uploadImages, // not used now, we use our queue/hook logic
     clearAllImages,
     fetchImages,
     sessionId,
   } = useCollageImages();
 
-  // Initialize hooks first to avoid "Cannot access X before initialization" errors
+  const [selectedPattern, setSelectedPattern] = useState<Pattern>("grid");
+  const [mainPhotoId, setMainPhotoId] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
+
+  // ***** NEW: Step 1 - Ask user how many photos *****
+  const [photoLimit, setPhotoLimit] = useState<number | null>(null);
+
+  // Validate images/pre-upload for photoLimit
+  const canUploadCount = photoLimit !== null ? photoLimit - images.length - previewQueue.length : MAX_PHOTO_COUNT;
+
+  // Use local upload queue for instant previews
   const {
     queue: previewQueue,
     addFiles,
@@ -66,15 +70,7 @@ const CollageBuilder = () => {
     upload,
     uploading,
     canAdd,
-  } = useImageUploadQueue(sessionId, images.map(i => i.name));
-  
-  const [selectedPattern, setSelectedPattern] = useState<Pattern>("grid");
-  const [mainPhotoId, setMainPhotoId] = useState<string | null>(null);
-  const [locked, setLocked] = useState(false);
-  const [photoLimit, setPhotoLimit] = useState<number | null>(null);
-
-  // Validate images/pre-upload for photoLimit
-  const canUploadCount = photoLimit !== null ? photoLimit - images.length - previewQueue.length : MAX_PHOTO_COUNT;
+  } = useImageUploadQueue(sessionId, images.map(i=>i.name));
 
   const inputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<CollageCanvasRef>(null);
@@ -97,7 +93,7 @@ const CollageBuilder = () => {
     }
   };
 
-  // Prevent uploading more than allowed via DnD
+  // New: Prevent uploading more than allowed via DnD
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragActive(false);
@@ -165,10 +161,11 @@ const CollageBuilder = () => {
 
   // Pattern-specific layout division, only for "grid" pattern
   let layoutConfig = null;
-  if (selectedPattern === "grid" && photoLimit && images.length > 0) {
-    // Total photos minus 1 main photo
-    const sidePhotosCount = images.length - 1;
-    layoutConfig = calculatePhotoDistribution(sidePhotosCount);
+  if (selectedPattern === "grid" && photoLimit) {
+    const total = photoLimit;
+    // 1 main photo, rest sides
+    const sides = total - 1;
+    layoutConfig = getDivisions(sides);
   }
 
   // ***** STEP 1: Ask for NUMBER of photos *****
@@ -356,10 +353,10 @@ const CollageBuilder = () => {
               <CollageCanvas
                 ref={canvasRef}
                 images={images}
-                mainPhotoId={mainPhotoId || images[0]?.id || null}
+                mainPhotoId={images[0]?.id ?? null}
                 pattern="grid"
                 locked={locked}
-                layoutConfig={layoutConfig}
+                layoutConfig={layoutConfig} // Pass grid arrangement to canvas for the pattern
               />
               <div className="mt-4 flex gap-3 justify-center">
                 <Button
@@ -378,8 +375,6 @@ const CollageBuilder = () => {
                   Download PDF (A4)
                 </Button>
               </div>
-              
-              {/* Photo thumbnails */}
               <div className="flex flex-wrap gap-4 mt-6 justify-center">
                 {images.map((img) => (
                   <div
