@@ -1,4 +1,3 @@
-
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -18,7 +17,6 @@ import {
 } from "lucide-react";
 import { useImageUploadQueue } from "@/hooks/useImageUploadQueue";
 import type { Pattern, CollageCanvasRef } from "@/components/collage/types";
-// Removed duplicate 'Pattern' type definition
 
 const PATTERNS: { key: Pattern; label: string; Icon: React.ElementType }[] = [
   { key: "grid", label: "Grid", Icon: Grid2x2 },
@@ -30,7 +28,7 @@ const CollageBuilder = () => {
   const {
     images,
     loading,
-    uploadImages, // not used now, we use our queue/hook logic
+    uploadImages, 
     clearAllImages,
     fetchImages,
     sessionId,
@@ -40,7 +38,6 @@ const CollageBuilder = () => {
   const [mainPhotoId, setMainPhotoId] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
 
-  // Use local upload queue for instant previews
   const {
     queue: previewQueue,
     addFiles,
@@ -51,16 +48,13 @@ const CollageBuilder = () => {
     canAdd,
   } = useImageUploadQueue(sessionId, images.map(i=>i.name));
 
+  if (!mainPhotoId && images.length) setMainPhotoId(images[0].id);
+  if (mainPhotoId && images.every(i => i.id !== mainPhotoId)) setMainPhotoId(null);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<CollageCanvasRef>(null);
   const [dragActive, setDragActive] = useState(false);
 
-  // Set mainPhotoId initially or after image list changes
-  if (!mainPhotoId && images.length) setMainPhotoId(images[0].id);
-  // Remove mainPhotoId if associated image gone
-  if (mainPhotoId && images.every(i => i.id !== mainPhotoId)) setMainPhotoId(null);
-
-  // Handle images drop (for drag and drop)
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragActive(false);
@@ -79,16 +73,13 @@ const CollageBuilder = () => {
     inputRef.current?.click();
   };
 
-  // Picker: onChange
   const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length) {
       addFiles(event.target.files);
-      // CLOSE picker!
       event.target.value = "";
     }
   };
 
-  // Download handler
   const handleDownload = async (format: "png" | "pdf") => {
     if (!images.length) {
       toast.error("Please upload images first!");
@@ -108,9 +99,7 @@ const CollageBuilder = () => {
     }
   };
 
-  // Allow remove/replace for preview images BEFORE upload
   const handleReplace = (id: string) => {
-    // open new picker, replacing on select
     const picker = document.createElement("input");
     picker.type = "file";
     picker.accept = "image/*";
@@ -121,7 +110,6 @@ const CollageBuilder = () => {
     picker.click();
   };
 
-  // When preview images exist, show section for them
   const hasPreviewImages = previewQueue.length > 0;
 
   return (
@@ -176,7 +164,6 @@ const CollageBuilder = () => {
           </span>
         </div>
 
-        {/* Show PREVIEW thumbnails before upload */}
         {hasPreviewImages && (
           <div className="mt-6">
             <h4 className="font-semibold mb-2">Selected Photos (Preview):</h4>
@@ -251,7 +238,6 @@ const CollageBuilder = () => {
           </div>
         )}
 
-        {/* Pattern selection & collage builder only after at least one image is uploaded */}
         {images.length > 0 && (
           <>
             <div className="flex items-center gap-4 mt-8 flex-wrap justify-center">
