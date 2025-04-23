@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 import { calculateGridLayout } from "../layout/calculateGridLayout";
 import { drawImgSmartCrop, drawImgFit } from "./drawImageHelpers";
@@ -44,13 +43,15 @@ export function drawImagesToCanvas(
       mainPhotoIndex: mainIndex,
     });
 
-    // Draw all side images (making sure we use every position calculated)
-    for (let i = 0; i < sideImgs.length && i < layout.side.length; ++i) {
-      const pos = layout.side[i];
-      if (pos) drawImgSmartCrop(ctx, sideImgs[i], pos.x, pos.y, pos.w, pos.h);
-    }
+    // Draw all side images
+    sideImgs.forEach((img, i) => {
+      if (i < layout.side.length) {
+        const pos = layout.side[i];
+        drawImgSmartCrop(ctx, img, pos.x, pos.y, pos.w, pos.h);
+      }
+    });
     
-    // Draw main photo
+    // Draw main photo last (on top)
     const m = layout.main;
     drawImgSmartCrop(ctx, mainImg, m.x, m.y, m.w, m.h);
   }
